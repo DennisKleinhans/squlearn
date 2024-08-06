@@ -1,23 +1,19 @@
 """ Fidelity Quantum Kernel class"""
 
 from typing import Union
+
 import numpy as np
-
-from qiskit_machine_learning.kernels import (
-    FidelityQuantumKernel,
-    FidelityStatevectorKernel,
-    TrainableFidelityQuantumKernel,
-    TrainableFidelityStatevectorKernel,
-)
-from qiskit_algorithms.state_fidelities import ComputeUncompute
 from qiskit.circuit import ParameterVector
+from qiskit_algorithms.state_fidelities import ComputeUncompute
+from qiskit_machine_learning.kernels import (
+    FidelityQuantumKernel, FidelityStatevectorKernel,
+    TrainableFidelityQuantumKernel, TrainableFidelityStatevectorKernel)
 
-from .kernel_matrix_base import KernelMatrixBase
 from ...encoding_circuit.encoding_circuit_base import EncodingCircuitBase
-from ...util.executor import Executor
 from ...util.data_preprocessing import convert_to_float64
-
+from ...util.executor import Executor
 from .fidelity_kernel_pennylane import FidelityKernelPennyLane
+from .kernel_matrix_base import KernelMatrixBase
 
 
 class FidelityKernel(KernelMatrixBase):

@@ -1,20 +1,18 @@
 """ Fidelity Quantum Kernel class"""
 
+from functools import lru_cache
 from typing import Union
-import numpy as np
 
+import numpy as np
 from qiskit.circuit import ParameterVector
 from qiskit.compiler import transpile
 from qiskit_algorithms.utils import algorithm_globals
 
 from ...encoding_circuit.encoding_circuit_base import EncodingCircuitBase
+from ...util.data_preprocessing import adjust_features, to_tuple
 from ...util.executor import Executor
-
-from ...util.pennylane.pennylane_gates import qiskit_pennylane_gate_dict
 from ...util.pennylane.pennylane_circuit import PennyLaneCircuit
-from ...util.data_preprocessing import to_tuple, adjust_features
-
-from functools import lru_cache
+from ...util.pennylane.pennylane_gates import qiskit_pennylane_gate_dict
 
 
 class FidelityKernelPennyLane:

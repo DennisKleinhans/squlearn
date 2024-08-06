@@ -1,6 +1,7 @@
 """Optimization methods in sQUlearn."""
 
 import abc
+
 import numpy as np
 
 

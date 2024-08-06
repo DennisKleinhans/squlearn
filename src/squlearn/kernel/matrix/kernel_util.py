@@ -1,6 +1,5 @@
 # kernel util
 import numpy as np
-
 from sklearn.gaussian_process.kernels import Kernel
 
 from .kernel_matrix_base import KernelMatrixBase

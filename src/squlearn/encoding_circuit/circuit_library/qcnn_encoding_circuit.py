@@ -1,11 +1,13 @@
-import numpy as np
 from typing import Union
+
+import numpy as np
 from qiskit import QuantumCircuit
 from qiskit.circuit import ParameterVector
 from qiskit.converters import circuit_to_gate, circuit_to_instruction
 
+from squlearn.encoding_circuit.circuit_library.param_z_feature_map import \
+    ParamZFeatureMap
 from squlearn.encoding_circuit.encoding_circuit_base import EncodingCircuitBase
-from squlearn.encoding_circuit.circuit_library.param_z_feature_map import ParamZFeatureMap
 from squlearn.observables import CustomObservable, SummedPaulis
 from squlearn.observables.observable_base import ObservableBase
 

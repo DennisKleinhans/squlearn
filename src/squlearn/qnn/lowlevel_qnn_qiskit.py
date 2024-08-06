@@ -1,22 +1,21 @@
-import numpy as np
 from typing import Union
 
+import numpy as np
 from qiskit import QuantumCircuit
-from qiskit.circuit import ParameterVector, ParameterExpression
+from qiskit.circuit import ParameterExpression, ParameterVector
 from qiskit.circuit.parametervector import ParameterVectorElement
 
+from ..encoding_circuit.encoding_circuit_base import EncodingCircuitBase
+from ..encoding_circuit.encoding_circuit_derivatives import \
+    EncodingCircuitDerivatives
+from ..encoding_circuit.transpiled_encoding_circuit import \
+    TranspiledEncodingCircuit
 from ..observables.observable_base import ObservableBase
 from ..observables.observable_derivatives import ObservableDerivatives
-
-from ..encoding_circuit.encoding_circuit_base import EncodingCircuitBase
-from ..encoding_circuit.encoding_circuit_derivatives import EncodingCircuitDerivatives
-from ..encoding_circuit.transpiled_encoding_circuit import TranspiledEncodingCircuit
-
-from ..util.data_preprocessing import adjust_features, adjust_parameters, to_tuple
 from ..util import Executor
-
-from ..util.optree.optree import OpTreeList, OpTreeCircuit, OpTree
-
+from ..util.data_preprocessing import (adjust_features, adjust_parameters,
+                                       to_tuple)
+from ..util.optree.optree import OpTree, OpTreeCircuit, OpTreeList
 from .lowlevel_qnn_base import LowLevelQNNBase
 
 
@@ -937,12 +936,12 @@ class LowLevelQNNQiskit(LowLevelQNNBase):
 
         # return dictionary for input data, it will be empty
         # if the combination of x,param,param_op is touched the first time
-        if self._result_caching == True:
+        if self._result_caching:
             caching_tuple = (
                 to_tuple(x),
                 to_tuple(param),
                 to_tuple(param_op),
-                (self._executor.shots == None),
+                (self._executor.shots is None),
             )
             value_dict = self.result_container.get(caching_tuple, {})
         else:

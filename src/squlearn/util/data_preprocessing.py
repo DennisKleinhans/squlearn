@@ -1,5 +1,6 @@
-import numpy as np
 from typing import Tuple, Union
+
+import numpy as np
 
 
 def adjust_features(x: Union[np.ndarray, float], x_length: int) -> Tuple[np.ndarray, bool]:

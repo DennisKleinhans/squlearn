@@ -1,15 +1,15 @@
 """Quantum Gaussian Process Regressor"""
 
 import warnings
+from typing import Optional, Union
+
+import numpy as np
+from scipy.linalg import cho_solve, cholesky
+from sklearn.base import BaseEstimator, RegressorMixin
+from sklearn.preprocessing._data import _handle_zeros_in_scale
 
 from ..matrix.kernel_matrix_base import KernelMatrixBase
 from ..matrix.regularization import regularize_full_kernel
-
-import numpy as np
-from typing import Optional, Union
-from scipy.linalg import cholesky, cho_solve
-from sklearn.base import BaseEstimator, RegressorMixin
-from sklearn.preprocessing._data import _handle_zeros_in_scale
 
 
 class QGPR(BaseEstimator, RegressorMixin):

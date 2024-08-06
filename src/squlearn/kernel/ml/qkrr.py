@@ -1,13 +1,12 @@
 """Quantum Kernel Ridge Regressor"""
 
-from ..matrix.kernel_matrix_base import KernelMatrixBase
-
-import scipy
-import numpy as np
 from typing import Optional, Union
+
+import numpy as np
+import scipy
 from sklearn.base import BaseEstimator, RegressorMixin
 
-from ..matrix.regularization import thresholding_regularization, tikhonov_regularization
+from ..matrix.kernel_matrix_base import KernelMatrixBase
 
 
 class QKRR(BaseEstimator, RegressorMixin):

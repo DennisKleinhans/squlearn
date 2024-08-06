@@ -1,9 +1,11 @@
 from collections import deque
+
 import numpy as np
 from bayes_opt import BayesianOptimization, UtilityFunction
 
 from .approximated_gradients import FiniteDiffGradient
-from .optimizer_base import OptimizerBase, SGDMixin, default_callback, OptimizerResult
+from .optimizer_base import (OptimizerBase, OptimizerResult, SGDMixin,
+                             default_callback)
 
 
 class SGLBO(OptimizerBase, SGDMixin):

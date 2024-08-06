@@ -1,5 +1,6 @@
-import numpy as np
 from typing import Union
+
+import numpy as np
 from qiskit import QuantumCircuit
 from qiskit.circuit import ParameterVector
 
@@ -237,7 +238,7 @@ class HighDimEncodingCircuit(EncodingCircuitBase):
                     raise ValueError("Unknown entangling gate:", self.entangling_gate)
             QC = build_layer(QC, features, index_offset)
             index_offset += self.num_qubits * 3
-            if self.cycling == False and index_offset >= self.num_features:
+            if not self.cycling and index_offset >= self.num_features:
                 index_offset = 0
 
         return QC

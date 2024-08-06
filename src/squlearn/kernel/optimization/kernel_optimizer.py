@@ -1,11 +1,13 @@
 """Quantum Kernel Optimizer"""
 
-import numpy as np
 from functools import partial
 from typing import Optional, Sequence
-from .kernel_optimization_base import KernelOptimizerBase
-from .kernel_loss_base import KernelLossBase
+
+import numpy as np
+
 from ...optimizers.optimizer_base import OptimizerBase
+from .kernel_loss_base import KernelLossBase
+from .kernel_optimization_base import KernelOptimizerBase
 
 
 class KernelOptimizer(KernelOptimizerBase):

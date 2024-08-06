@@ -4,7 +4,8 @@ import numpy as np
 import qiskit_algorithms.optimizers as qiskit_optimizers
 from scipy.optimize import minimize
 
-from .optimizer_base import OptimizerBase, OptimizerResult, IterativeMixin, default_callback
+from .optimizer_base import (IterativeMixin, OptimizerBase, OptimizerResult,
+                             default_callback)
 
 
 class WrappedOptimizerBase(OptimizerBase, IterativeMixin):

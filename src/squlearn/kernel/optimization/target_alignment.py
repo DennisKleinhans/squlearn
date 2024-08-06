@@ -1,10 +1,11 @@
 """Target alignment loss function for kernel matrices."""
 
+from typing import Sequence
+
 import numpy as np
 
-from typing import Sequence
-from .kernel_loss_base import KernelLossBase
 from ..matrix.kernel_matrix_base import KernelMatrixBase
+from .kernel_loss_base import KernelLossBase
 
 
 class TargetAlignment(KernelLossBase):

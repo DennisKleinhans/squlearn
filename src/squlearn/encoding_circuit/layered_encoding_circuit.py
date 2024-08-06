@@ -1,15 +1,15 @@
-import numpy as np
-from typing import Union, Callable
 import copy
+from typing import Callable, Union
 
+import numpy as np
 import sympy as sp
-
 from qiskit import QuantumCircuit
 from qiskit.circuit import ParameterVector
-from qiskit.circuit.library import RXGate, RYGate, RZGate, PhaseGate, UGate
-from qiskit.circuit.library import CPhaseGate, CHGate, CXGate, CYGate, CZGate
-from qiskit.circuit.library import SwapGate, CRXGate, CRYGate, CRZGate, RXXGate
-from qiskit.circuit.library import RYYGate, RZXGate, RZZGate, CUGate
+from qiskit.circuit.library import (CHGate, CPhaseGate, CRXGate, CRYGate,
+                                    CRZGate, CUGate, CXGate, CYGate, CZGate,
+                                    PhaseGate, RXGate, RXXGate, RYGate,
+                                    RYYGate, RZGate, RZXGate, RZZGate,
+                                    SwapGate, UGate)
 
 from .encoding_circuit_base import EncodingCircuitBase
 
@@ -31,7 +31,7 @@ class VariableGroup:
         self.variable_name = variable_name
         self.size = size
         self.index = 0
-        if size == None:
+        if size is None:
             self.total_variables_used = 0
 
     def __hash__(self):
@@ -46,7 +46,7 @@ class VariableGroup:
         returns the total number of variables that have been used;
         if number of size counts until infinity, cause size is not given, than return counter, else return size
         """
-        if self.size == None:
+        if self.size is None:
             return self.total_variables_used
         return self.size
 
@@ -59,7 +59,7 @@ class VariableGroup:
         (this is important for initializing the parameter vectors of qiskit with get_number_of_variables)
         Note that it's possible to substract numbers (with negative integers) too.
         """
-        if self.size == None:
+        if self.size is None:
             self.total_variables_used += number_of_used_variables
         pass
 
@@ -95,7 +95,7 @@ class _operation:
         self.num_qubits = num_qubits
         self.variablegroup_tuple = variablegroup_tuple
         self.ent_strategy = None
-        if map == None:
+        if map is None:
             # Default: Set map to x*y (if two arguments given, if there are more than two arguments for one operation without any given map, an error will be raised)
             self.map = lambda x, y: x * y
             self.default_map = True
@@ -214,7 +214,7 @@ class _rot_operation(_operation):
                 "There are too many variable groups given without a map. There can only be one or two parameters without any given map."
             )
         elif self.default_map and (len(self.variablegroup_tuple) == 1):
-            if self.variablegroup_tuple[0].size == None:
+            if self.variablegroup_tuple[0].size is None:
                 for qubit in range(self.num_qubits):
                     QC.append(
                         r_star(
@@ -244,7 +244,7 @@ class _rot_operation(_operation):
             for qubit in range(self.num_qubits):
                 buffer_param_vectors_list = []
                 for variablegroup in self.variablegroup_tuple:
-                    if variablegroup.size == None:
+                    if variablegroup.size is None:
                         buffer_param_vectors_list.append(
                             var_param_assignment[hash(variablegroup)][variablegroup.index]
                         )
@@ -341,7 +341,7 @@ class _U_operation(_operation):
         for qubit in range(self.num_qubits):
             buffer_param_vectors_list = []
             for variablegroup in self.variablegroup_tuple:
-                if variablegroup.size == None:
+                if variablegroup.size is None:
                     buffer_param_vectors_list.append(
                         var_param_assignment[hash(variablegroup)][variablegroup.index]
                     )
@@ -374,7 +374,7 @@ class _two_qubit_operation(_operation):
         3rd: Variable group is given
         4th: Dimension (size) is finite (or infinite)
         """
-        if self.variablegroup_tuple == None:
+        if self.variablegroup_tuple is None:
             if self.ent_strategy == "AA":
                 for first_qubit in range(self.num_qubits - 1):
                     for second_qubit in range(first_qubit + 1, self.num_qubits):
@@ -392,7 +392,7 @@ class _two_qubit_operation(_operation):
             )
         elif self.default_map and len(self.variablegroup_tuple) == 1:
             if self.ent_strategy == "AA":
-                if self.variablegroup_tuple[0].size == None:
+                if self.variablegroup_tuple[0].size is None:
                     for first_qubit in range(self.num_qubits - 1):
                         for second_qubit in range(first_qubit + 1, self.num_qubits):
                             QC.append(
@@ -420,7 +420,7 @@ class _two_qubit_operation(_operation):
                             )
                             self.variablegroup_tuple[0].increase_index(1)
             elif self.ent_strategy == "NN":
-                if self.variablegroup_tuple[0].size == None:
+                if self.variablegroup_tuple[0].size is None:
                     for first_qubit in range(0, self.num_qubits - 1, 2):
                         QC.append(
                             gate(
@@ -476,7 +476,7 @@ class _two_qubit_operation(_operation):
                     for second_qubit in range(first_qubit + 1, self.num_qubits):
                         buffer_param_vectors_list = []
                         for variablegroup in self.variablegroup_tuple:
-                            if variablegroup.size == None:
+                            if variablegroup.size is None:
                                 buffer_param_vectors_list.append(
                                     var_param_assignment[hash(variablegroup)][variablegroup.index]
                                 )
@@ -496,7 +496,7 @@ class _two_qubit_operation(_operation):
                 for first_qubit in range(0, self.num_qubits - 1, 2):
                     buffer_param_vectors_list = []
                     for variablegroup in self.variablegroup_tuple:
-                        if variablegroup.size == None:
+                        if variablegroup.size is None:
                             buffer_param_vectors_list.append(
                                 var_param_assignment[hash(variablegroup)][variablegroup.index]
                             )
@@ -515,7 +515,7 @@ class _two_qubit_operation(_operation):
                 for first_qubit in range(1, self.num_qubits - 1, 2):
                     buffer_param_vectors_list = []
                     for variablegroup in self.variablegroup_tuple:
-                        if variablegroup.size == None:
+                        if variablegroup.size is None:
                             buffer_param_vectors_list.append(
                                 var_param_assignment[hash(variablegroup)][variablegroup.index]
                             )
@@ -674,7 +674,7 @@ class _CU_operation(_two_qubit_operation):
                 for second_qubit in range(first_qubit + 1, self.num_qubits):
                     buffer_param_vectors_list = []
                     for variablegroup in self.variablegroup_tuple:
-                        if variablegroup.size == None:
+                        if variablegroup.size is None:
                             buffer_param_vectors_list.append(
                                 var_param_assignment[hash(variablegroup)][variablegroup.index]
                             )
@@ -694,7 +694,7 @@ class _CU_operation(_two_qubit_operation):
             for first_qubit in range(0, self.num_qubits - 1, 2):
                 buffer_param_vectors_list = []
                 for variablegroup in self.variablegroup_tuple:
-                    if variablegroup.size == None:
+                    if variablegroup.size is None:
                         buffer_param_vectors_list.append(
                             var_param_assignment[hash(variablegroup)][variablegroup.index]
                         )
@@ -713,7 +713,7 @@ class _CU_operation(_two_qubit_operation):
             for first_qubit in range(1, self.num_qubits - 1, 2):
                 buffer_param_vectors_list = []
                 for variablegroup in self.variablegroup_tuple:
-                    if variablegroup.size == None:
+                    if variablegroup.size is None:
                         buffer_param_vectors_list.append(
                             var_param_assignment[hash(variablegroup)][variablegroup.index]
                         )
@@ -760,7 +760,7 @@ class LayeredPQC:
         self._num_qubits = num_qubits
         self.operation_list = []
         self.variable_groups = variable_groups
-        if variable_groups != None:
+        if variable_groups is not None:
             variable_groups_string_list = []
             variable_name_list = []
             for i in range(len(variable_groups)):
@@ -787,8 +787,8 @@ class LayeredPQC:
             self.operation_list.append(operation)
             for layer_operation in operation.layer.operation_list:
                 variablegroup_tuple = layer_operation.variablegroup_tuple
-                if variablegroup_tuple != None:
-                    if layer_operation.ent_strategy == None:
+                if variablegroup_tuple is not None:
+                    if layer_operation.ent_strategy is None:
                         number_of_variables = self.num_qubits
                     elif layer_operation.ent_strategy == "NN":
                         number_of_variables = self.num_qubits - 1
@@ -807,11 +807,11 @@ class LayeredPQC:
         else:
             self.operation_list.append(operation)
             variablegroup_tuple = operation.variablegroup_tuple
-            if variablegroup_tuple != None:
+            if variablegroup_tuple is not None:
                 # creates the variable_num_list, which gives information about how often a parameter (the variable group) is used in each operation;
                 #   for example in a 5 qubit system with R_x-Layers: There are 5 (number of qubits) R_x-Gates used,
                 #   whereas in nearest neighbour entangling there are only 4 (number of qubits - 1) variables per group used.
-                if operation.ent_strategy == None:
+                if operation.ent_strategy is None:
                     number_of_variables = self.num_qubits
                 elif operation.ent_strategy == "NN":
                     number_of_variables = self.num_qubits - 1
@@ -894,8 +894,8 @@ class LayeredPQC:
                         else:
                             var_group_tuple = operation.variablegroup_tuple
                             operation.num_qubits = value
-                            if var_group_tuple != None:
-                                if operation.ent_strategy == None:
+                            if var_group_tuple is not None:
+                                if operation.ent_strategy is None:
                                     for var_group in var_group_tuple:
                                         var_group.increase_used_number_of_variables(
                                             value - self.num_qubits
@@ -939,7 +939,7 @@ class LayeredPQC:
                     self.operation_list = []
 
                     for var in self.variable_groups:
-                        if var.size == None:
+                        if var.size is None:
                             var.total_variables_used = 0
 
                     self.add_layer(self_layer, value)
@@ -956,7 +956,7 @@ class LayeredPQC:
         """
 
         # To avoid errors, we set the indices of all variable groups to zero first
-        if self.variable_groups != None:
+        if self.variable_groups is not None:
             for i in range(len(self.variable_groups)):
                 self.variable_groups[i].set_index_to_zero()
 
@@ -968,12 +968,12 @@ class LayeredPQC:
                 operation_layer = operation
                 for i in range(operation_layer.num_layers):
                     for op in operation_layer.layer.operation_list:
-                        if op.variablegroup_tuple == None:
+                        if op.variablegroup_tuple is None:
                             QC = QC.compose(op.get_circuit())
                         else:
                             QC = QC.compose(op.get_circuit(var_param_assignment))
             else:
-                if operation.variablegroup_tuple == None:
+                if operation.variablegroup_tuple is None:
                     QC = QC.compose(operation.get_circuit())
                 else:
                     QC = QC.compose(operation.get_circuit(var_param_assignment))
@@ -1022,7 +1022,7 @@ class LayeredPQC:
         Args:
             variablegroup_tuple:  is a tuple of variable types (x1,x2 etc.)
         """
-        if map == None:
+        if map is None:
             self.add_operation(_Rx_operation(self.num_qubits, variablegroup_tuple))
         else:
             self.add_operation(_Rx_operation(self.num_qubits, variablegroup_tuple, map))
@@ -1034,7 +1034,7 @@ class LayeredPQC:
         Args:
             variablegroup_tuple:  is a tuple of variable types (x1,x2 etc.)
         """
-        if map == None:
+        if map is None:
             self.add_operation(_Ry_operation(self.num_qubits, variablegroup_tuple))
         else:
             self.add_operation(_Ry_operation(self.num_qubits, variablegroup_tuple, map))
@@ -1046,7 +1046,7 @@ class LayeredPQC:
         Args:
             variablegroup_tuple:  is a tuple of variable types (x1,x2 etc.)
         """
-        if map == None:
+        if map is None:
             self.add_operation(_Rz_operation(self.num_qubits, variablegroup_tuple))
         else:
             self.add_operation(_Rz_operation(self.num_qubits, variablegroup_tuple, map))
@@ -1058,7 +1058,7 @@ class LayeredPQC:
         Args:
             variablegroup_tuple:  is a tuple of variable types (x1,x2 etc.)
         """
-        if map == None:
+        if map is None:
             if len(variablegroup_tuple) != 1:
                 raise ValueError("There must be one variable group for a P gate.")
             self.add_operation(_P_operation(self.num_qubits, variablegroup_tuple))
@@ -1075,7 +1075,7 @@ class LayeredPQC:
         map = None
         if isinstance(variablegroup_tuple[0], tuple):
             variablegroup_tuple = variablegroup_tuple[0]
-        if map == None:
+        if map is None:
             if len(variablegroup_tuple) != 3:
                 raise ValueError("There must be three variable groups for a U gate.")
             self.add_operation(_U_operation(self.num_qubits, variablegroup_tuple))
@@ -1260,7 +1260,7 @@ class LayeredPQC:
         """
         if isinstance(variablegroup_tuple[0], tuple):
             variablegroup_tuple = variablegroup_tuple[0]
-        if map != None:
+        if map is not None:
             raise AttributeError("There must be no map for a cu entangling layer.")
         self.add_operation(_CU_operation(self.num_qubits, variablegroup_tuple, ent_strategy, map))
 
@@ -1341,7 +1341,7 @@ class LayeredPQC:
                 closed_brackets = False
                 string_iterator += 1
             elif character_iter == "]":
-                if closed_brackets == True:
+                if closed_brackets:
                     raise ValueError("There are to many closed brackets.")
                 closed_brackets = True
                 encoding_circuit.add_layer(encoding_circuit_active, num_layers=number_of_layers)
@@ -1522,7 +1522,7 @@ class LayeredPQC:
                 if character_iter == "r":
                     function_pointer = None
 
-                if function_pointer != None:
+                if function_pointer is not None:
                     if string_iterator + 2 < len(gate_layers):
                         character_iter_2 = gate_layers[string_iterator + 2]
                         if character_iter_2 == "(":
@@ -2661,8 +2661,8 @@ class _operation_layer:
         for operation in self.layer.operation_list:
             var_group_tuple = operation.variablegroup_tuple
             operation.num_qubits = value
-            if var_group_tuple != None:
-                if operation.ent_strategy == None:
+            if var_group_tuple is not None:
+                if operation.ent_strategy is None:
                     for var_group in var_group_tuple:
                         var_group.increase_used_number_of_variables(
                             self.num_layers * (value - self.layer.num_qubits)
@@ -2690,8 +2690,8 @@ class _operation_layer:
         num_qubits = self.layer.num_qubits
         for layer_operation in self.layer.operation_list:
             variablegroup_tuple = layer_operation.variablegroup_tuple
-            if variablegroup_tuple != None:
-                if layer_operation.ent_strategy == None:
+            if variablegroup_tuple is not None:
+                if layer_operation.ent_strategy is None:
                     number_of_variables = num_qubits
                 elif layer_operation.ent_strategy == "NN":
                     number_of_variables = num_qubits - 1

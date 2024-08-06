@@ -1,8 +1,9 @@
+from typing import Callable, Union
+
 import numpy as np
 from qiskit import QuantumCircuit
 from qiskit.circuit import ParameterVector
 from qiskit.circuit.library import BlueprintCircuit
-from typing import Union, Callable
 
 from ..encoding_circuit_base import EncodingCircuitBase
 

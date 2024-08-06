@@ -1,29 +1,21 @@
 """Projected Quantum Kernel class"""
 
-from typing import Union, List
-import numpy as np
 from abc import abstractmethod
+from typing import List, Union
 
-from sklearn.gaussian_process.kernels import (
-    RBF,
-    Matern,
-    ExpSineSquared,
-    RationalQuadratic,
-    DotProduct,
-    PairwiseKernel,
-)
-
+import numpy as np
+from sklearn.gaussian_process.kernels import RBF, DotProduct, ExpSineSquared
 from sklearn.gaussian_process.kernels import Kernel as SklearnKernel
+from sklearn.gaussian_process.kernels import (Matern, PairwiseKernel,
+                                              RationalQuadratic)
 
-from .kernel_matrix_base import KernelMatrixBase
 from ...encoding_circuit.encoding_circuit_base import EncodingCircuitBase
-from ...util import Executor
-
-from ...qnn.lowlevel_qnn import LowLevelQNN
-from ...qnn.lowlevel_qnn_base import LowLevelQNNBase
-
 from ...observables import SinglePauli
 from ...observables.observable_base import ObservableBase
+from ...qnn.lowlevel_qnn import LowLevelQNN
+from ...qnn.lowlevel_qnn_base import LowLevelQNNBase
+from ...util import Executor
+from .kernel_matrix_base import KernelMatrixBase
 
 
 class OuterKernelBase:

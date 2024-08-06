@@ -1,21 +1,20 @@
 """QNNClassifier Implemenation"""
 
-from typing import Callable, Union
 import sys
+from typing import Callable, Union
 
 import numpy as np
 from sklearn.base import ClassifierMixin
 from sklearn.preprocessing import LabelBinarizer
 from tqdm import tqdm
 
-from .base_qnn import BaseQNN
-from .loss import LossBase, VarianceLoss
-from .training import train_mini_batch, train, ShotControlBase
-
-from ..observables.observable_base import ObservableBase
 from ..encoding_circuit.encoding_circuit_base import EncodingCircuitBase
+from ..observables.observable_base import ObservableBase
 from ..optimizers.optimizer_base import OptimizerBase, SGDMixin
 from ..util import Executor
+from .base_qnn import BaseQNN
+from .loss import LossBase, VarianceLoss
+from .training import ShotControlBase, train, train_mini_batch
 
 
 class QNNClassifier(BaseQNN, ClassifierMixin):

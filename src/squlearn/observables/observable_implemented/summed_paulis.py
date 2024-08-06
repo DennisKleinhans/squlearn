@@ -1,6 +1,6 @@
-import numpy as np
 from typing import Union
 
+import numpy as np
 from qiskit.circuit import ParameterVector
 from qiskit.quantum_info import SparsePauliOp
 

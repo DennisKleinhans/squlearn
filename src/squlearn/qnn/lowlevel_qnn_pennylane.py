@@ -1,21 +1,19 @@
-from typing import Union, List
-import numpy as np
 import copy
+from typing import List, Union
 
+import numpy as np
+import pennylane as qml
+import pennylane.numpy as pnp
 from qiskit.circuit import ParameterVector
 from qiskit.circuit.parametervector import ParameterVectorElement
 
-import pennylane as qml
-import pennylane.numpy as pnp
-
-from .lowlevel_qnn_base import LowLevelQNNBase
-
-from ..observables.observable_base import ObservableBase
 from ..encoding_circuit.encoding_circuit_base import EncodingCircuitBase
-
+from ..observables.observable_base import ObservableBase
 from ..util import Executor
-from ..util.data_preprocessing import adjust_features, adjust_parameters, to_tuple
+from ..util.data_preprocessing import (adjust_features, adjust_parameters,
+                                       to_tuple)
 from ..util.pennylane.pennylane_circuit import PennyLaneCircuit
+from .lowlevel_qnn_base import LowLevelQNNBase
 
 
 class DirectEvaluation:
@@ -341,12 +339,12 @@ class LowLevelQNNPennyLane(LowLevelQNNBase):
 
         # return dictionary for input data, it will be empty
         # if the combination of x,param,param_op is touched the first time
-        if self._result_caching == True:
+        if self._result_caching:
             caching_tuple = (
                 to_tuple(x),
                 to_tuple(param),
                 to_tuple(param_obs),
-                (self._executor.shots == None),
+                (self._executor.shots is None),
             )
             value_dict = self.result_container.get(caching_tuple, {})
         else:

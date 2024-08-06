@@ -1,19 +1,14 @@
-from qiskit.circuit import ParameterVector, ParameterExpression
+from typing import Union
+
+import numpy as np
+from qiskit.circuit import ParameterExpression, ParameterVector
 from qiskit.circuit.parametervector import ParameterVectorElement
 from qiskit.quantum_info import SparsePauliOp
-from typing import Union
-import numpy as np
 
-from .observable_base import ObservableBase
 from ..util.data_preprocessing import adjust_parameters
-
-from ..util.optree.optree import (
-    OpTreeElementBase,
-    OpTreeSum,
-    OpTreeList,
-    OpTreeOperator,
-    OpTree,
-)
+from ..util.optree.optree import (OpTree, OpTreeElementBase, OpTreeList,
+                                  OpTreeOperator, OpTreeSum)
+from .observable_base import ObservableBase
 
 
 class ObservableDerivatives:
@@ -208,7 +203,7 @@ class ObservableDerivatives:
         else:
             # Check if differentiating tuple is already stored in optree_cache
             if (
-                self._optree_caching == True
+                self._optree_caching
                 and (helper_hash(diff_tuple), observable_label) in self._optree_cache
             ):
                 # If stored -> return
@@ -224,26 +219,26 @@ class ObservableDerivatives:
                     measure = OpTree.evaluate.transform_to_zbasis(measure)
 
                 # Store result in the optree_cache
-                if self._optree_caching == True:
+                if self._optree_caching:
                     self._optree_cache[(helper_hash(diff_tuple), observable_label)] = measure
                 return measure
 
     def get_operator(self):
         "Returns the observable operator"
-        if self._optree_caching == True and "O" in self._optree_cache:
+        if self._optree_caching and "O" in self._optree_cache:
             return self._optree_cache["O"].copy()
         else:
             O = self._optree_start
             if self._split_paulis:
                 O = OpTree.evaluate.transform_to_zbasis(O)
             # If caching is enabled, store in the dictionary
-            if self._optree_caching == True:
+            if self._optree_caching:
                 self._optree_cache["O"] = O
             return O
 
     def get_operator_squared(self):
         "Returns the squared form of the observable OO=O^2"
-        if self._optree_caching == True and "OO" in self._optree_cache:
+        if self._optree_caching and "OO" in self._optree_cache:
             return self._optree_cache["OO"].copy()
         else:
 
@@ -272,7 +267,7 @@ class ObservableDerivatives:
                 O2 = OpTree.evaluate.transform_to_zbasis(O2)
 
             # If caching is enabled, store in the dictionary
-            if self._optree_caching == True:
+            if self._optree_caching:
                 self._optree_cache["OO"] = O2
 
             return O2
@@ -331,7 +326,7 @@ def operator_differentiation(
         Differentiated observable as an OpTree
     """
     # Make a list if input is not a list
-    if parameters == None or parameters == []:
+    if parameters is None or parameters == []:
         return None
 
     if isinstance(parameters, ParameterVectorElement):

@@ -1,7 +1,7 @@
 """A library for quantum machine learning following the scikit-learnstandard."""
 
+from . import encoding_circuit, kernel, observables, optimizers, qnn, util
 from .util import Executor
-from . import observables, encoding_circuit, kernel, optimizers, qnn, util
 
 __version__ = "0.7.5"
 

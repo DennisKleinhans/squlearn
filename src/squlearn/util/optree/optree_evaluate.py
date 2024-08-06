@@ -1,28 +1,17 @@
-import numpy as np
-from typing import Union, List, Tuple
-
 import time
+from typing import List, Tuple, Union
 
+import numpy as np
 from qiskit import QuantumCircuit
-from qiskit.circuit import ParameterExpression, Clbit
-from qiskit.primitives import BaseEstimator, BaseSampler
-from qiskit.primitives import BackendEstimator
-from qiskit.quantum_info import SparsePauliOp, PauliList, Pauli
+from qiskit.circuit import Clbit, ParameterExpression
+from qiskit.primitives import BackendEstimator, BaseEstimator, BaseSampler
 from qiskit.primitives.backend_estimator import _pauli_expval_with_variance
 from qiskit.primitives.base import SamplerResult
+from qiskit.quantum_info import Pauli, PauliList, SparsePauliOp
 
-from .optree import (
-    OpTreeNodeBase,
-    OpTreeLeafBase,
-    OpTreeList,
-    OpTreeSum,
-    OpTreeCircuit,
-    OpTreeOperator,
-    OpTreeContainer,
-    OpTreeValue,
-    OpTreeExpectationValue,
-    OpTreeMeasuredOperator,
-)
+from .optree import (OpTreeCircuit, OpTreeContainer, OpTreeExpectationValue,
+                     OpTreeLeafBase, OpTreeList, OpTreeMeasuredOperator,
+                     OpTreeNodeBase, OpTreeOperator, OpTreeSum, OpTreeValue)
 
 
 def _check_tree_for_matrix_compatibility(element: Union[OpTreeNodeBase, OpTreeLeafBase]):

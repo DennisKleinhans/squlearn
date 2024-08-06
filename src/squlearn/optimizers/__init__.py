@@ -1,9 +1,10 @@
 """Module for optimizer implementations and wrappers."""
 
 from .adam import Adam
+from .approximated_gradients import (FiniteDiffGradient,
+                                     StochasticPerturbationGradient)
+from .optimizers_wrapper import LBFGSB, SLSQP, SPSA
 from .sglbo import SGLBO
-from .optimizers_wrapper import SLSQP, SPSA, LBFGSB
-from .approximated_gradients import FiniteDiffGradient, StochasticPerturbationGradient
 
 __all__ = [
     "Adam",

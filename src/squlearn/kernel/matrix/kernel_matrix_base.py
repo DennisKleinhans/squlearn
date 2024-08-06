@@ -1,9 +1,11 @@
 from typing import Union
+
 import numpy as np
 
-from .regularization import thresholding_regularization, tikhonov_regularization
 from ...encoding_circuit.encoding_circuit_base import EncodingCircuitBase
 from ...util.executor import Executor
+from .regularization import (thresholding_regularization,
+                             tikhonov_regularization)
 
 
 class KernelMatrixBase:

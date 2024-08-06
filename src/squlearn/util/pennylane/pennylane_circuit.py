@@ -1,22 +1,19 @@
+from typing import List, Union
+
 import numpy as np
-from typing import Union, List
-from sympy import lambdify, sympify
-
-from qiskit import QuantumCircuit
-from qiskit.circuit import ParameterExpression
-from qiskit.quantum_info import SparsePauliOp
-from qiskit.circuit.classicalregister import Clbit
-
-from qiskit.compiler import transpile
-from qiskit_aer import Aer
-
 import pennylane as qml
 import pennylane.numpy as pnp
 import pennylane.pauli as pauli
 from pennylane.operation import Observable as PennyLaneObservable
+from qiskit import QuantumCircuit
+from qiskit.circuit import ParameterExpression
+from qiskit.circuit.classicalregister import Clbit
+from qiskit.compiler import transpile
+from qiskit.quantum_info import SparsePauliOp
+from sympy import lambdify, sympify
 
-from .pennylane_gates import qiskit_pennylane_gate_dict
 from ..executor import Executor
+from .pennylane_gates import qiskit_pennylane_gate_dict
 
 
 def _get_sympy_interface():
@@ -303,7 +300,7 @@ class PennyLaneCircuit:
                 param_tuple = ()
                 for param in op.operation.params:
                     if isinstance(param, ParameterExpression):
-                        if param._symbol_expr == None:
+                        if param._symbol_expr is None:
                             param = param._coeff
                         else:
                             symbol_expr = sympify(param._symbol_expr)
@@ -365,7 +362,7 @@ class PennyLaneCircuit:
             Tuple with lists of PennyLane observable parameter functions, PennyLane Pauli words,
             PennyLane observable parameters and PennyLane observable parameter dimensions
         """
-        if observable == None:
+        if observable is None:
             return None, None, None
 
         pennylane_obs_param_function = []
@@ -412,7 +409,7 @@ class PennyLaneCircuit:
             pennylane_obs_param_function_ = []
             for coeff in obs.coeffs:
                 if isinstance(coeff, ParameterExpression):
-                    if coeff._symbol_expr == None:
+                    if coeff._symbol_expr is None:
                         coeff = coeff._coeff
                         if isinstance(coeff, np.complex128) or isinstance(coeff, np.complex64):
                             if np.imag(coeff) != 0:
@@ -506,7 +503,7 @@ class PennyLaneCircuit:
                             measurements[op[1][j]] = qml.measure(wire)
                 else:
                     # Evaluate the (non-linear) parameter expression of the gate
-                    if self._pennylane_gates_param_function[i] != None:
+                    if self._pennylane_gates_param_function[i] is not None:
                         evaluated_param = tuple(
                             [
                                 func(*circ_param_list) if callable(func) else func
@@ -517,7 +514,7 @@ class PennyLaneCircuit:
                         evaluated_param = None
 
                     # Treat c_if conditions of the gate (if present)
-                    if self._pennylane_conditions[i] != None:
+                    if self._pennylane_conditions[i] is not None:
                         # Calculate the value of the classical bit(s) involved in the condition
                         if isinstance(self._pennylane_conditions[i][0], list):
                             # conditions involving multiple classical bits -> convert to integer
@@ -556,7 +553,7 @@ class PennyLaneCircuit:
                             op(wires=self._pennylane_gates_wires[i])
 
             # Defines the output of the circuit
-            if self._qiskit_observable == None:
+            if self._qiskit_observable is None:
                 return qml.probs(wires=range(self._num_qubits))
             elif self._qiskit_observable == "probs":
                 return qml.probs(wires=range(self._num_qubits))

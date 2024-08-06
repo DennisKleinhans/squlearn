@@ -1,7 +1,6 @@
 from . import matrix, ml, optimization
-
 from .matrix import FidelityKernel, ProjectedQuantumKernel
-from .ml import QKRR, QGPC, QGPR, QSVR, QSVC
+from .ml import QGPC, QGPR, QKRR, QSVC, QSVR
 
 __all__ = [
     "matrix",

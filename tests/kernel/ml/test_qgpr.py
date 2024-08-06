@@ -115,14 +115,14 @@ class TestQGPR:
 
         qgpr_params = qgpr_instance.get_params()
         assert qgpr_params["num_qubits"] == 3
-        assert qgpr_params["full_regularization"] == True
+        assert qgpr_params["full_regularization"]
 
         qgpr_instance.set_params(num_qubits=4)
         qgpr_instance.set_params(full_regularization=False)
 
         qgpr_params_updated = qgpr_instance.get_params()
         assert qgpr_params_updated["num_qubits"] == 4
-        assert qgpr_params_updated["full_regularization"] == False
+        assert not qgpr_params_updated["full_regularization"]
 
         # check if fit is still possible
         X, y = data
@@ -174,13 +174,13 @@ class TestQGPR:
 
         qgpr_params = qgpr_instance.get_params()
         assert qgpr_params["sigma"] == 1.0e-6
-        assert qgpr_params["normalize_y"] == False
+        assert not qgpr_params["normalize_y"]
         qgpr_instance.set_params(sigma=0.01)
         qgpr_instance.set_params(normalize_y=True)
 
         qgpr_params_updated = qgpr_instance.get_params()
         assert qgpr_params_updated["sigma"] == 0.01
-        assert qgpr_params_updated["normalize_y"] == True
+        assert qgpr_params_updated["normalize_y"]
 
     @pytest.mark.parametrize("qgpr", ["qgpr_fidelity", "qgpr_pqk"])
     def test_that_regularization_is_called_when_not_none(self, qgpr, request, data):

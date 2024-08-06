@@ -1,45 +1,48 @@
-import numpy as np
-import logging
-from logging.handlers import RotatingFileHandler
-from logging import handlers
 import copy
-from pathlib import Path
-from hashlib import blake2b
-from typing import Any, Union
+import logging
+import time
 import traceback
 from dataclasses import asdict
-import time
+from hashlib import blake2b
+from logging import handlers
+from pathlib import Path
+from typing import Any, Union
+
 import dill as pickle
-from packaging import version
-
+import numpy as np
 import qiskit
-from qiskit.primitives import Estimator as qiskit_primitives_Estimator
-from qiskit.primitives import BackendEstimator as qiskit_primitives_BackendEstimator
-from qiskit.primitives import Sampler as qiskit_primitives_Sampler
-from qiskit.primitives import BackendSampler as qiskit_primitives_BackendSampler
-from qiskit.primitives import BaseEstimator, BaseSampler
-from qiskit.primitives.base import SamplerResult, EstimatorResult
-from qiskit_aer import Aer
-from qiskit_ibm_runtime import QiskitRuntimeService, Session
-from qiskit.providers import Options
-from qiskit.providers import JobV1 as Job
-from qiskit.providers.backend import Backend
-from qiskit.providers.jobstatus import JobStatus, JOB_FINAL_STATES
-from qiskit_ibm_runtime import Estimator as qiskit_ibm_runtime_Estimator
-from qiskit_ibm_runtime import Sampler as qiskit_ibm_runtime_Sampler
-from qiskit_ibm_runtime.exceptions import IBMRuntimeError, RuntimeJobFailureError
-from qiskit_ibm_runtime.options import Options as qiskit_ibm_runtime_Options
-from qiskit.exceptions import QiskitError
+from packaging import version
 from qiskit import QuantumCircuit
-
+from qiskit.exceptions import QiskitError
+from qiskit.primitives import \
+    BackendEstimator as qiskit_primitives_BackendEstimator
+from qiskit.primitives import \
+    BackendSampler as qiskit_primitives_BackendSampler
+from qiskit.primitives import BaseEstimator, BaseSampler
+from qiskit.primitives import Estimator as qiskit_primitives_Estimator
+from qiskit.primitives import Sampler as qiskit_primitives_Sampler
+from qiskit.primitives.base import EstimatorResult, SamplerResult
+from qiskit.providers import JobV1 as Job
+from qiskit.providers import Options
+from qiskit.providers.backend import Backend
+from qiskit.providers.jobstatus import JOB_FINAL_STATES, JobStatus
+from qiskit_aer import Aer
+from qiskit_ibm_runtime import Estimator as qiskit_ibm_runtime_Estimator
+from qiskit_ibm_runtime import QiskitRuntimeService
+from qiskit_ibm_runtime import Sampler as qiskit_ibm_runtime_Sampler
+from qiskit_ibm_runtime import Session
+from qiskit_ibm_runtime.exceptions import (IBMRuntimeError,
+                                           RuntimeJobFailureError)
+from qiskit_ibm_runtime.options import Options as qiskit_ibm_runtime_Options
 
 if version.parse(qiskit.__version__) <= version.parse("0.45.0"):
     from qiskit.utils import algorithm_globals
-from qiskit_algorithms.utils import algorithm_globals as qiskit_algorithm_globals
 
-from pennylane.devices import Device as PennylaneDevice
-from pennylane import QubitDevice
 import pennylane as qml
+from pennylane import QubitDevice
+from pennylane.devices import Device as PennylaneDevice
+from qiskit_algorithms.utils import \
+    algorithm_globals as qiskit_algorithm_globals
 
 
 class Executor:
@@ -1771,7 +1774,7 @@ class ExecutorCache:
 
         def make_recursive_str(variable_):
             """creates a string from a list"""
-            if type(variable_) == list:
+            if type(variable_) is list:
                 text = ""
                 for i in variable_:
                     text += make_recursive_str(i)

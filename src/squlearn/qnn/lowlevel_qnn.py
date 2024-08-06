@@ -1,9 +1,8 @@
 from typing import Union
 
-from ..observables.observable_base import ObservableBase
 from ..encoding_circuit.encoding_circuit_base import EncodingCircuitBase
+from ..observables.observable_base import ObservableBase
 from ..util import Executor
-
 from .lowlevel_qnn_base import LowLevelQNNBase
 from .lowlevel_qnn_pennylane import LowLevelQNNPennyLane
 from .lowlevel_qnn_qiskit import LowLevelQNNQiskit

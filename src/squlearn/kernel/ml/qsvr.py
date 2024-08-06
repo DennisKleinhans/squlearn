@@ -1,7 +1,8 @@
-from ..matrix.kernel_matrix_base import KernelMatrixBase
+from typing import Optional, Union
 
 from sklearn.svm import SVR
-from typing import Union, Optional
+
+from ..matrix.kernel_matrix_base import KernelMatrixBase
 
 
 class QSVR(SVR):

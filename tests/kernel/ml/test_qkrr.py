@@ -5,7 +5,6 @@ import numpy as np
 from unittest.mock import MagicMock
 
 from sklearn.datasets import make_regression
-from sklearn.exceptions import NotFittedError
 from sklearn.preprocessing import MinMaxScaler
 
 from squlearn import Executor

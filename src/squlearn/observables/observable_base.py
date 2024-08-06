@@ -1,11 +1,12 @@
-import numpy as np
-from typing import Union
 from abc import ABC, abstractmethod
+from typing import Union
 
+import numpy as np
 from qiskit.circuit import ParameterVector
-from qiskit.quantum_info import SparsePauliOp, Pauli
+from qiskit.quantum_info import Pauli, SparsePauliOp
 
-from ..util.optree.optree import OpTreeNodeBase, OpTreeList, OpTreeSum, OpTreeOperator, OpTree
+from ..util.optree.optree import (OpTree, OpTreeList, OpTreeNodeBase,
+                                  OpTreeOperator, OpTreeSum)
 
 
 class ObservableBase(ABC):

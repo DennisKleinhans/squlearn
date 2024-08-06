@@ -1,17 +1,16 @@
-import numpy as np
-from qiskit.circuit import ParameterVector
-from qiskit.circuit.parametervector import ParameterVectorElement
-from qiskit.circuit.parameterexpression import ParameterExpression
-
 import warnings
-from typing import Union, Tuple
-from qiskit import QuantumCircuit
+from typing import Tuple, Union
 
-from .encoding_circuit_base import EncodingCircuitBase
+import numpy as np
+from qiskit import QuantumCircuit
+from qiskit.circuit import ParameterVector
+from qiskit.circuit.parameterexpression import ParameterExpression
+from qiskit.circuit.parametervector import ParameterVectorElement
 
 from ..util.data_preprocessing import adjust_features
-from ..util.qfi import get_quantum_fisher
 from ..util.executor import Executor
+from ..util.qfi import get_quantum_fisher
+from .encoding_circuit_base import EncodingCircuitBase
 
 
 class PrunedEncodingCircuit(EncodingCircuitBase):

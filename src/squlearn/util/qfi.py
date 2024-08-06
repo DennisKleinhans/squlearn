@@ -1,13 +1,12 @@
 import numpy as np
-from qiskit.circuit import ParameterVector
-from qiskit_algorithms.gradients import LinCombQGT, QFI
-
 import pennylane as qml
 import pennylane.numpy as pnp
+from qiskit.circuit import ParameterVector
+from qiskit_algorithms.gradients import QFI, LinCombQGT
 
 from ..encoding_circuit.encoding_circuit_base import EncodingCircuitBase
-from .executor import Executor
 from .data_preprocessing import adjust_features, adjust_parameters
+from .executor import Executor
 from .pennylane import PennyLaneCircuit
 
 

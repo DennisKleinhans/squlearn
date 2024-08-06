@@ -1,9 +1,11 @@
 import abc
 from collections import deque
+
 import numpy as np
 
-from .optimizer_base import OptimizerBase, SGDMixin, OptimizerResult, default_callback
 from .approximated_gradients import FiniteDiffGradient
+from .optimizer_base import (OptimizerBase, OptimizerResult, SGDMixin,
+                             default_callback)
 
 
 class Adam(OptimizerBase, SGDMixin):
@@ -131,7 +133,7 @@ class Adam(OptimizerBase, SGDMixin):
 
             x_updated = self.step(x=self.x, grad=gradient)
 
-            if bounds != None:
+            if bounds is not None:
                 x_updated = np.clip(x_updated, bounds[:, 0], bounds[:, 1])
 
             if self.log_file is not None:

@@ -1,14 +1,13 @@
-import numpy as np
-from typing import Union, Set
+from typing import Union
 
+import numpy as np
 from qiskit.circuit import ParameterVector
 from qiskit.circuit.parametervector import ParameterVectorElement
 
-from .encoding_circuit_base import EncodingCircuitBase
-
-from ..util.optree.optree import OpTreeElementBase, OpTreeCircuit, OpTreeSum, OpTreeList, OpTree
-
 from ..util.data_preprocessing import adjust_features, adjust_parameters
+from ..util.optree.optree import (OpTree, OpTreeCircuit, OpTreeElementBase,
+                                  OpTreeList, OpTreeSum)
+from .encoding_circuit_base import EncodingCircuitBase
 
 
 class EncodingCircuitDerivatives:
@@ -190,7 +189,7 @@ class EncodingCircuitDerivatives:
             return self._optree_start.copy()
         else:
             # Check if differentiating tuple is already stored in optree_cache
-            if self._optree_caching == True and helper_hash((diff_tuple,)) in self._optree_cache:
+            if self._optree_caching and helper_hash((diff_tuple,)) in self._optree_cache:
                 # If stored -> return
                 return self._optree_cache[helper_hash((diff_tuple,))].copy()
             else:
@@ -199,7 +198,7 @@ class EncodingCircuitDerivatives:
                     self._differentiation_from_tuple(diff_tuple[1:]), diff_tuple[0]
                 )
                 # Store result in the optree_cache
-                if self._optree_caching == True:
+                if self._optree_caching:
                     self._optree_cache[helper_hash((diff_tuple,))] = circ
                 return circ
 

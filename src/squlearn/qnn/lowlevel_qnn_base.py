@@ -1,13 +1,13 @@
 import abc
-from typing import Union
-import numpy as np
 import copy
+from typing import Union
 
+import numpy as np
 from qiskit.circuit import ParameterVector
 from qiskit.circuit.parametervector import ParameterVectorElement
 
-from ..observables.observable_base import ObservableBase
 from ..encoding_circuit.encoding_circuit_base import EncodingCircuitBase
+from ..observables.observable_base import ObservableBase
 from ..util import Executor
 
 

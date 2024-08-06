@@ -1,9 +1,10 @@
 """Loss function implementations for QNNs."""
 
 import abc
-from typing import Union
-import numpy as np
 from collections.abc import Callable
+from typing import Union
+
+import numpy as np
 
 
 class LossBase(abc.ABC):

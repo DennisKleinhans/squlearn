@@ -1,12 +1,12 @@
-import numpy as np
-
-from sklearn.utils import gen_batches
 from typing import Union
 
+import numpy as np
+from sklearn.utils import gen_batches
+
+from ..optimizers.optimizer_base import IterativeMixin, OptimizerBase, SGDMixin
+from ..util import Executor
 from .loss import LossBase
 from .lowlevel_qnn_base import LowLevelQNNBase
-from ..optimizers.optimizer_base import OptimizerBase, SGDMixin, IterativeMixin
-from ..util import Executor
 
 
 def get_variance_fac(v: float, a: float, b: float, offset: int = 0):

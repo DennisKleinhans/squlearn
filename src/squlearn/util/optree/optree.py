@@ -1,9 +1,9 @@
-from typing import List, Union, Callable, Any
 import copy
+from typing import Any, Callable, List, Union
 
 from qiskit import QuantumCircuit
-from qiskit.quantum_info import SparsePauliOp
 from qiskit.circuit import ParameterExpression
+from qiskit.quantum_info import SparsePauliOp
 
 
 class OpTreeElementBase:

@@ -1,22 +1,15 @@
-import numpy as np
-from typing import List, Union, Set
 import copy
+from typing import List, Set, Union
 
+import numpy as np
 from qiskit import QuantumCircuit
 from qiskit.circuit import ParameterExpression, ParameterVector
-from qiskit.quantum_info import SparsePauliOp
 from qiskit.compiler import transpile
+from qiskit.quantum_info import SparsePauliOp
 
-from .optree import (
-    OpTreeNodeBase,
-    OpTreeList,
-    OpTreeSum,
-    OpTreeCircuit,
-    OpTreeOperator,
-    OpTreeValue,
-    OpTreeExpectationValue,
-    OpTreeMeasuredOperator,
-)
+from .optree import (OpTreeCircuit, OpTreeExpectationValue, OpTreeList,
+                     OpTreeMeasuredOperator, OpTreeNodeBase, OpTreeOperator,
+                     OpTreeSum, OpTreeValue)
 
 
 def _circuit_parameter_shift(

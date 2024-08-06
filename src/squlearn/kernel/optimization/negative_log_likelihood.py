@@ -1,11 +1,12 @@
 """ Negative log likelihood loss function"""
 
-import scipy
-import numpy as np
-
 from typing import Sequence
-from .kernel_loss_base import KernelLossBase
+
+import numpy as np
+import scipy
+
 from ..matrix.kernel_matrix_base import KernelMatrixBase
+from .kernel_loss_base import KernelLossBase
 
 
 class NLL(KernelLossBase):

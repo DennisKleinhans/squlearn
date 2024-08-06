@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import numpy as np
 from typing import Union
 
-from qiskit.circuit import ParameterVector
+import numpy as np
 from qiskit import QuantumCircuit
+from qiskit.circuit import ParameterVector
 
 from ..encoding_circuit_base import EncodingCircuitBase
 
