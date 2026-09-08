@@ -213,7 +213,6 @@ QNN Core
 
    qnn.lowlevel_qnn.LowLevelQNN
    qnn.lowlevel_qnn.lowlevel_qnn_pennylane.LowLevelQNNPennyLane
-   qnn.lowlevel_qnn.lowlevel_qnn_qiskit.LowLevelQNNQiskit
    qnn.lowlevel_qnn.lowlevel_qnn_base.LowLevelQNNBase
    qnn.loss.SquaredLoss
    qnn.loss.MeanSquaredError

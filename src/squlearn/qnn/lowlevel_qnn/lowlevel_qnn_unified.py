@@ -6,6 +6,7 @@ from warnings import warn
 import numpy as np
 
 from qc_executor import Parameters, QuantumOperator
+from qc_executor.parameters import Parameter
 
 from ...observables.observable_base import ObservableBase
 from ...encoding_circuit.encoding_circuit_base import EncodingCircuitBase
@@ -14,9 +15,8 @@ from ...util import Executor
 from ...util.data_preprocessing import adjust_features, adjust_parameters, to_tuple
 
 from .lowlevel_qnn_base import LowLevelQNNBase
-from .lowlevel_qnn_qiskit import LowLevelQNNQiskit
 from .lowlevel_qnn_pennylane import LowLevelQNNPennyLane
-from .evaluation_classes import eval_var, eval_dvardx, eval_dvardp, eval_dvardop
+from .evaluation_classes import eval_var, eval_dvardx, eval_dvardp, eval_dvardop, get_eval_laplace
 
 # Frameworks for which Executor.expectation_value/expectation_value_derivatives
 # (and therefore the native evaluation path) are available. Frameworks not in this
@@ -73,18 +73,105 @@ _VAR_FAMILY = {
     "dvarfdop": (("f", "dfccdop", "dfdop"), eval_dvardop),
 }
 
+# Higher-order and mixed derivatives, native only for Qiskit: qc_executor's
+# Qiskit backend supports chained (tuple-form) derivatives -
+# expectation_value_derivatives(circuit, observable, ("x", "x"), ...) - via
+# OpTree differentiation applied once per side (circuit, observable) and
+# combined once, exact because circuit and observable parameters are
+# disjoint. PennyLane's/Qulacs's qc_executor backends do not have an
+# equivalent yet, so this stays Qiskit-only.
+# Maps each key to (observable_attr, derivative_param_tuple), the same shape
+# as _NATIVE_KEY_INFO above, generalized from a single "x"/"p"/"p_op" string
+# to a tuple of them (one entry per differentiation, in order) - derived
+# directly from LowLevelQNNQiskit's own Expec.from_string argnum mapping
+# (0="p", 1="x", 2="p_op") so every key it recognizes is covered here too.
+_NATIVE_KEY_INFO_QISKIT_ONLY = {
+    "dfdxdx": ("_native_observable", ("x", "x")),
+    "dfdpdp": ("_native_observable", ("p", "p")),
+    "dfdopdp": ("_native_observable", ("p_op", "p")),
+    "dfdpdop": ("_native_observable", ("p", "p_op")),
+    "dfdopdop": ("_native_observable", ("p_op", "p_op")),
+    "dfdpdx": ("_native_observable", ("p", "x")),
+    "dfdxdp": ("_native_observable", ("x", "p")),
+    "dfdopdx": ("_native_observable", ("p_op", "x")),
+    "dfdopdxdx": ("_native_observable", ("p_op", "x", "x")),
+    "dfccdxdx": ("_native_observable_squared", ("x", "x")),
+    "dfccdpdp": ("_native_observable_squared", ("p", "p")),
+    "dfccdopdx": ("_native_observable_squared", ("p_op", "x")),
+    "dfccdopdop": ("_native_observable_squared", ("p_op", "p_op")),
+    # Order-3, pure circuit-side permutations that LowLevelQNNQiskit's own
+    # Expec.from_string never recognized (a pre-existing, independent gap -
+    # see evaluation_classes.get_evaluation_class, which *does* know them via
+    # DirectEvaluation for other frameworks). Covered here as a side effect
+    # of the tuple machinery, not a regression relative to the string API.
+    "dfdxdxdp": ("_native_observable", ("x", "x", "p")),
+    "dfdxdpdx": ("_native_observable", ("x", "p", "x")),
+    "dfdpdxdx": ("_native_observable", ("p", "x", "x")),
+}
+_NATIVE_KEYS_QISKIT_ONLY = frozenset(_NATIVE_KEY_INFO_QISKIT_ONLY)
+
+# Trailing-shape dimensions for the keys above: one attribute name per tuple
+# position, in the same order as the derivative tuple - generalizes
+# _NATIVE_KEY_TRAILING_DIM_ATTR's single-attribute form.
+_NATIVE_KEY_TRAILING_DIM_ATTR_QISKIT_ONLY = {
+    "dfdxdx": ("num_features", "num_features"),
+    "dfdpdp": ("num_parameters", "num_parameters"),
+    "dfdopdp": ("num_parameters_observable", "num_parameters"),
+    "dfdpdop": ("num_parameters", "num_parameters_observable"),
+    "dfdopdop": ("num_parameters_observable", "num_parameters_observable"),
+    "dfdpdx": ("num_parameters", "num_features"),
+    "dfdxdp": ("num_features", "num_parameters"),
+    "dfdopdx": ("num_parameters_observable", "num_features"),
+    "dfdopdxdx": ("num_parameters_observable", "num_features", "num_features"),
+    "dfccdxdx": ("num_features", "num_features"),
+    "dfccdpdp": ("num_parameters", "num_parameters"),
+    "dfccdopdx": ("num_parameters_observable", "num_features"),
+    "dfccdopdop": ("num_parameters_observable", "num_parameters_observable"),
+    "dfdxdxdp": ("num_features", "num_features", "num_parameters"),
+    "dfdxdpdx": ("num_features", "num_parameters", "num_features"),
+    "dfdpdxdx": ("num_parameters", "num_features", "num_features"),
+    # laplace_dp/laplace_dop (below) keep a single trailing axis - the x,x
+    # axes of their dfdpdxdx/dfdopdxdx dependency are traced away by
+    # get_eval_laplace, not carried through to the key's own shape.
+    "laplace_dp": "num_parameters",
+    "laplace_dop": "num_parameters_observable",
+}
+
+# laplace/laplace_dp/laplace_dop are pure post-processing (a trace over the
+# feature-Hessian's diagonal) of a Qiskit-only higher-order key above - same
+# pattern as _VAR_FAMILY, reusing the legacy engines' own get_eval_laplace
+# instead of reimplementing it. Qiskit-only because their dependencies are.
+_LAPLACE_FAMILY = {
+    "laplace": (("dfdxdx",), get_eval_laplace("dfdxdx")),
+    "laplace_dp": (("dfdpdxdx",), get_eval_laplace("dfdpdxdx")),
+    "laplace_dop": (("dfdopdxdx",), get_eval_laplace("dfdopdxdx")),
+}
+
+# Merged lookups used at runtime: the qiskit-only keys are only ever looked
+# up here after the framework gate in _evaluate has already restricted them
+# to qiskit, so a single merged dict (instead of two conditionally-consulted
+# ones) keeps _compute_native/_compute_native_per_observable/_trailing_shape
+# simple - no key collides between the two source dicts.
+_NATIVE_KEY_INFO_ALL = {**_NATIVE_KEY_INFO, **_NATIVE_KEY_INFO_QISKIT_ONLY}
+_NATIVE_KEY_TRAILING_DIM_ATTR_ALL = {
+    **_NATIVE_KEY_TRAILING_DIM_ATTR,
+    **_NATIVE_KEY_TRAILING_DIM_ATTR_QISKIT_ONLY,
+}
+
 
 class LowLevelQNNUnified(LowLevelQNNBase):
     """Low-level QNN that evaluates ``f``/``dfdx``/``dfdp``/``dfdop``, the corresponding
-    values of the squared observable (``fcc``/``dfccdx``/``dfccdp``/``dfccdop``), and the
-    ``var``/``dvardx``/``dvardp``/``dvardop`` family derived from those, directly through
-    ``qc_executor`` (no ``OpTree`` construction) for frameworks it supports. Falls back to
-    the legacy framework-specific engine (:class:`LowLevelQNNQiskit`, :class:`LowLevelQNNPennyLane`)
-    for every other requested derivative (``dfdxdx``, ``laplace``, ...) as well as for
-    frameworks qc_executor does not yet cover. Qulacs has no such fallback engine - its
-    legacy engine (``LowLevelQNNQulacs``) declared every one of those additional keys as
-    unsupported already, so nothing was lost by removing it; any such key raises
-    ``NotImplementedError`` directly for qulacs (see :attr:`_fallback`).
+    values of the squared observable (``fcc``/``dfccdx``/``dfccdp``/``dfccdop``), the
+    ``var``/``dvardx``/``dvardp``/``dvardop`` family derived from those, and - for Qiskit
+    only - every chained higher-order derivative (``dfdxdx``, ``laplace``, ...) plus generic
+    identity-based derivative keys (e.g. ``llqnn.parameters[0]``), directly through
+    ``qc_executor`` (no ``OpTree`` construction of its own). Falls back to the legacy
+    framework-specific engine (:class:`LowLevelQNNPennyLane`) for every non-native key on
+    frameworks qc_executor does not yet fully cover. Qiskit and Qulacs have no such fallback
+    engine left: their legacy engines (``LowLevelQNNQiskit``, ``LowLevelQNNQulacs``) declared
+    every key not covered above as unsupported already, so nothing was lost by
+    removing them; any other key raises ``NotImplementedError`` directly for those two
+    frameworks (see :attr:`_fallback`).
 
     Args:
         pqc (EncodingCircuitBase): The parameterized quantum circuit.
@@ -95,10 +182,11 @@ class LowLevelQNNUnified(LowLevelQNNBase):
             dict after evaluate.
         caching (bool): Caching of the result for each `x`, `param`, `param_op` combination
             (default = True)
-        primitive (str): Qiskit-only primitive selection. Only forwarded to the fallback engine
-            (used for derivatives beyond the native keys listed above), since ``qc_executor``
-            has no equivalent per-call primitive selection. Ignored (with a warning) for
-            frameworks that don't support it, matching the old per-framework classes.
+        primitive (str): Qiskit-only primitive selection, kept for API compatibility with the
+            removed :class:`LowLevelQNNQiskit`. Has no effect: qc_executor has no equivalent
+            per-call primitive selection, and every Qiskit key is now native. Ignored (with a
+            warning) for frameworks that don't support it, matching the old per-framework
+            classes.
     """
 
     _NATIVE_KEYS = frozenset(_NATIVE_KEY_INFO)
@@ -191,32 +279,22 @@ class LowLevelQNNUnified(LowLevelQNNBase):
         self.result_container = {}
 
     @property
-    def _fallback(self) -> Union[LowLevelQNNQiskit, LowLevelQNNPennyLane]:
+    def _fallback(self) -> LowLevelQNNPennyLane:
         """Lazily-constructed legacy, framework-specific engine. Used for every derivative
-        order/kind not covered by the native qc_executor path (``dfdxdx``, ``laplace``, ``var``,
-        ...), and for every key at all when the framework has no qc_executor bridge yet.
+        order/kind not covered by the native qc_executor path, for PennyLane only - the only
+        framework that still has one (see the class docstring).
 
         Raises:
-            NotImplementedError: For qulacs, always - there is no fallback engine for it
-                (see the class docstring). Accessing this property for qulacs means either
-                a non-native derivative key was requested, or (less obviously) one of
-                :attr:`parameters`/:attr:`features`/:attr:`parameters_operator` was read:
-                those return the fallback engine's own parameter-vector objects (needed
-                for identity-based tuple derivative specs), not the ones qc_executor
-                uses natively.
+            NotImplementedError: For qiskit and qulacs, always - there is no fallback engine
+                for either (see the class docstring). Accessing this property for them means
+                either a non-native derivative key was requested, or (less obviously) one of
+                :attr:`parameters`/:attr:`features`/:attr:`parameters_operator` was read on a
+                framework where those don't return the native vectors: those return the
+                fallback engine's own parameter-vector objects (needed for identity-based
+                tuple derivative specs), not the ones qc_executor uses natively.
         """
         if self._fallback_engine is None:
-            if self._framework == "qiskit":
-                self._fallback_engine = LowLevelQNNQiskit(
-                    self._pqc,
-                    self._observable,
-                    self._executor,
-                    self._num_features,
-                    post_processing=None,
-                    caching=self.caching,
-                    primitive=self._primitive,
-                )
-            elif self._framework == "pennylane":
+            if self._framework == "pennylane":
                 self._fallback_engine = LowLevelQNNPennyLane(
                     self._pqc,
                     self._observable,
@@ -225,13 +303,22 @@ class LowLevelQNNUnified(LowLevelQNNBase):
                     post_processing=None,
                     caching=self.caching,
                 )
-            elif self._framework == "qulacs":
+            elif self._framework in ("qiskit", "qulacs"):
                 raise NotImplementedError(
-                    "No fallback engine exists for qulacs: only the native evaluation "
-                    f"keys {sorted(self._NATIVE_KEYS | set(_VAR_FAMILY))} are supported. "
-                    "This was already the case before the legacy LowLevelQNNQulacs engine "
-                    "was removed - it declared every other key unsupported "
-                    "(dfdxdx, laplace, dfdpdp, ..., fischer)."
+                    "No fallback engine exists for "
+                    f"{self._framework}: only the native evaluation keys "
+                    f"{sorted(self._NATIVE_KEYS | set(_VAR_FAMILY))}"
+                    + (
+                        f" plus {sorted(_NATIVE_KEYS_QISKIT_ONLY | set(_LAPLACE_FAMILY))} "
+                        "(chained derivatives, WP-G) and generic identity-based derivative "
+                        "keys (e.g. llqnn.parameters[0])"
+                        if self._framework == "qiskit"
+                        else ""
+                    )
+                    + " are supported. This was already the case before the legacy "
+                    f"LowLevelQNN{self._framework.capitalize()} engine was removed - it "
+                    "declared every other key unsupported (dfdxdx, laplace, dfdpdp, ..., "
+                    "fischer)."
                 )
             else:
                 raise RuntimeError(f"Unsupported quantum framework: {self._framework}")
@@ -339,49 +426,130 @@ class LowLevelQNNUnified(LowLevelQNNBase):
         """Return true if multiple outputs are used."""
         return isinstance(self._observable, list)
 
-    # NOTE: these intentionally return the *fallback* engine's parameter vectors, not the
-    # native self._x/self._p/self._p_op used for the qc_executor path. Tuple-based derivative
-    # specs built from these (e.g. `llqnn.parameters[0]`) are only ever evaluated through the
-    # fallback (native keys are plain strings, see _evaluate), and the fallback's OpTree
-    # differentiation matches parameters by object identity - it must see its own vectors.
+    # For qiskit, these return the *native* self._x/self._p/self._p_op vectors: qc_executor's
+    # tuple-form expectation_value_derivatives (WP-G) resolves a raw Parameter/ParameterVector
+    # by object identity, and these are literally the objects self._native_circuit/
+    # self._native_observable were built from - no fallback engine involved (see
+    # _build_derivative_arg/_evaluate below for how such a key, e.g. `llqnn.parameters[0]`, is
+    # then evaluated). Other frameworks have no such native tuple mechanism yet, so they keep
+    # returning the fallback engine's own vectors, which its OpTree differentiation needs to
+    # see (matches parameters by object identity against its own, separately-built circuit).
     @property
     def parameters(self) -> Parameters:
         """Return the parameter vector of the PQC."""
-        return self._fallback.parameters
+        return self._p if self._framework == "qiskit" else self._fallback.parameters
 
     @property
     def features(self) -> Parameters:
         """Return the feature vector of the PQC."""
-        return self._fallback.features
+        return self._x if self._framework == "qiskit" else self._fallback.features
 
     @property
     def parameters_operator(self) -> Parameters:
         """Return the parameter vector of the cost operator."""
-        return self._fallback.parameters_operator
+        return self._p_op if self._framework == "qiskit" else self._fallback.parameters_operator
 
-    def _trailing_shape(self, key: str) -> tuple:
+    def _build_derivative_arg(self, val):
+        """Translate a raw derivative key (Parameter/Parameters/tuple of those, e.g.
+        `llqnn.parameters[0]` or `(llqnn.parameters[0], llqnn.parameters[1])`) into the
+        (str | Parameter | tuple) form qc_executor's expectation_value_derivatives expects.
+        A whole Parameters vector becomes its name string (the same convention "x"/"p"/"p_op"
+        already use); a bare Parameter is wrapped in a 1-tuple so qc_executor returns an
+        array-shaped (not scalar) result - matching LowLevelQNNQiskit's own Expec.from_variable,
+        which treats a bare Parameter identically to a 1-tuple containing it.
+        """
+        if isinstance(val, tuple):
+            return tuple(self._translate_derivative_entry(e) for e in val)
+        if isinstance(val, Parameters):
+            return val.name
+        if isinstance(val, Parameter):
+            return (val,)
+        raise ValueError(f"Unsupported derivative key: {val!r}")
+
+    def _translate_derivative_entry(self, entry):
+        if isinstance(entry, Parameters):
+            return entry.name
+        if isinstance(entry, Parameter):
+            return entry
+        raise ValueError(f"Unsupported derivative key element: {entry!r}")
+
+    def _trailing_shape_raw(self, val) -> tuple:
+        """Trailing shape for a raw derivative key - one axis per entry (a bare, non-tuple
+        key counts as a single entry, matching LowLevelQNNQiskit's own bare-Parameter
+        convention), sized 1 for a Parameter or the vector's length for a whole Parameters."""
+
+        def entry_dim(e):
+            if isinstance(e, Parameters):
+                return len(e)
+            if isinstance(e, Parameter):
+                return 1
+            raise ValueError(f"Unsupported derivative key element: {e!r}")
+
+        entries = val if isinstance(val, tuple) else (val,)
+        dims = tuple(entry_dim(e) for e in entries)
+        return (self.num_operator,) + dims if self.multiple_output else dims
+
+    def _is_p_op_entry(self, entry) -> bool:
+        if isinstance(entry, str):
+            return entry == "p_op"
+        if isinstance(entry, Parameter):
+            return entry in self._p_op
+        return False
+
+    def _p_op_entry_excludes_observable(self, entry, ioff: int, n: int) -> bool:
+        """Whether observable i's own p_op slice [ioff, ioff+n) makes this p_op-involving
+        tuple entry contribute nothing for that observable. For the "p_op" string this is
+        the existing "owns no p_op parameters at all" check; for a raw p_op Parameter (only
+        possible via _build_derivative_arg, i.e. a `llqnn.parameters_operator[i]`-style key)
+        it is a by-index membership check instead - unlike the string form, qc_executor's
+        per-call resolution of a raw element does not verify observable membership itself, so
+        that must happen here before the call is made.
+        """
+        if isinstance(entry, str):
+            return n == 0
+        return not (ioff <= entry.index < ioff + n)
+
+    def _trailing_shape(self, key) -> tuple:
         """Shape of a single evaluation's result for `key`, excluding the x/param/param_op
         batch axes (matches the axis convention of :class:`LowLevelQNNQiskit`: output axis
         before the derivative axis)."""
+        if not isinstance(key, str):
+            return self._trailing_shape_raw(key)
         multi = self.multiple_output
         n_op = self.num_operator
-        if key in ("f", "fcc"):
+        if key in ("f", "fcc", "laplace"):
+            # laplace traces away both feature-Hessian axes of its dfdxdx
+            # dependency entirely, leaving the same (empty) trailing shape
+            # as a plain expectation value.
             return (n_op,) if multi else ()
         try:
-            d = getattr(self, _NATIVE_KEY_TRAILING_DIM_ATTR[key])
+            attr = _NATIVE_KEY_TRAILING_DIM_ATTR_ALL[key]
         except KeyError:
             raise ValueError(f"Unknown native key: {key}") from None
-        return (n_op, d) if multi else (d,)
+        dims = tuple(getattr(self, a) for a in attr) if isinstance(attr, tuple) else (
+            getattr(self, attr),
+        )
+        return (n_op,) + dims if multi else dims
 
-    def _compute_native(self, key: str, parameters: dict):
-        observable_attr, derivative_param = _NATIVE_KEY_INFO[key]
+    def _compute_native(self, key, parameters: dict):
+        if isinstance(key, str):
+            observable_attr, derivative_param = _NATIVE_KEY_INFO_ALL[key]
+        else:
+            # A raw identity-based key (see _build_derivative_arg) always targets the plain
+            # observable "O" - LowLevelQNNQiskit's own Expec.from_tuple has no squared-
+            # observable form for these either.
+            observable_attr, derivative_param = "_native_observable", self._build_derivative_arg(key)
         observable = getattr(self, observable_attr)
+        has_p_op = self._is_p_op_entry(derivative_param) or (
+            isinstance(derivative_param, tuple)
+            and any(self._is_p_op_entry(e) for e in derivative_param)
+        )
         if self.multiple_output and (
-            # A "*dop" key always needs it: each observable only contributes a gradient
-            # for its own "p_op" slice, and qc_executor's list-observable collapse
-            # assumes every list entry produces a result of the same shape - it can't
-            # zero-pad the rest.
-            derivative_param == "p_op"
+            # A "*dop"/"*dopdx"/... key always needs it: each observable only
+            # contributes a gradient for its own "p_op" slice, and
+            # qc_executor's list-observable collapse assumes every list entry
+            # produces a result of the same shape - it can't zero-pad the rest.
+            has_p_op
             # The other keys need it only for backends that can't bind a shared "p_op"
             # vector across list entries owning different-sized slices of it.
             or self._framework in _LIST_OBSERVABLE_NEEDS_PER_OBSERVABLE_CALLS
@@ -393,29 +561,69 @@ class LowLevelQNNUnified(LowLevelQNNBase):
             self._native_circuit, observable, derivative_param, **parameters
         )
 
-    def _compute_native_per_observable(self, key: str, parameters: dict) -> np.ndarray:
+    def _compute_native_per_observable(self, key, parameters: dict) -> np.ndarray:
         """Evaluate ``key`` for each observable individually."""
-        observable_attr, derivative_param = _NATIVE_KEY_INFO[key]
+        if isinstance(key, str):
+            observable_attr, derivative_param = _NATIVE_KEY_INFO_ALL[key]
+        else:
+            observable_attr, derivative_param = "_native_observable", self._build_derivative_arg(key)
         observable_list = getattr(self, observable_attr)
         needs_local_p_op_slice = self._framework in _LIST_OBSERVABLE_NEEDS_PER_OBSERVABLE_CALLS
+        # Positions of "p_op" within the derivative tuple/shape (every position for a tuple
+        # containing it, [0] for a bare "p_op" string or raw p_op Parameter, [] if it isn't
+        # involved at all). A key like "dfdopdop" has "p_op" at *two* positions - each must be
+        # sliced down to the observable's own (ioff, n) range independently, since qc_executor
+        # resolves each tuple element against the same observable-local parameter set.
+        if isinstance(derivative_param, tuple):
+            p_op_axes = [ax for ax, e in enumerate(derivative_param) if self._is_p_op_entry(e)]
+        elif self._is_p_op_entry(derivative_param):
+            p_op_axes = [0]
+        else:
+            p_op_axes = []
         out = np.zeros(self._trailing_shape(key), dtype=float)
         for i, (obs, (ioff, n)) in enumerate(zip(observable_list, self._observable_p_op_slices)):
-            if derivative_param == "p_op" and n == 0:
-                # Observable i owns no "p_op" parameters at all - df_i/dp_op_j stays 0 for
-                # every j, including the j's belonging to i's own (empty) slice.
+            if p_op_axes and any(
+                self._p_op_entry_excludes_observable(
+                    derivative_param[ax] if isinstance(derivative_param, tuple) else derivative_param,
+                    ioff,
+                    n,
+                )
+                for ax in p_op_axes
+            ):
+                # Observable i's own p_op slice excludes at least one requested p_op entry -
+                # df_i/d(...) stays 0 for that entry, including a raw entry belonging to a
+                # *different* observable's slice entirely (see _p_op_entry_excludes_observable).
                 continue
             obs_parameters = dict(parameters)
             if needs_local_p_op_slice:
                 obs_parameters["p_op"] = parameters["p_op"][ioff : ioff + n]
             if derivative_param is None:
                 out[i] = self._executor.expectation_value(self._native_circuit, obs, **obs_parameters)
-            elif derivative_param == "p_op":
+            elif p_op_axes:
                 value = self._executor.expectation_value_derivatives(
-                    self._native_circuit, obs, "p_op", **obs_parameters
+                    self._native_circuit, obs, derivative_param, **obs_parameters
                 )
+                dest_shape = out[i].shape
+
+                def _local_size_and_slice(ax):
+                    entry = derivative_param[ax] if isinstance(derivative_param, tuple) else derivative_param
+                    if isinstance(entry, str):
+                        return n, slice(ioff, ioff + n)
+                    return 1, slice(entry.index, entry.index + 1)
+
+                local_sizes = []
+                global_slices = []
+                for ax in range(len(dest_shape)):
+                    if ax in p_op_axes:
+                        size, gslice = _local_size_and_slice(ax)
+                    else:
+                        size, gslice = dest_shape[ax], slice(None)
+                    local_sizes.append(size)
+                    global_slices.append(gslice)
+                value = np.asarray(value, dtype=float).reshape(tuple(local_sizes))
                 # df_i/dp_op_j is 0 by construction for every j outside observable i's own
-                # slice - only that slice of row i is filled in.
-                out[i, ioff : ioff + n] = np.asarray(value, dtype=float).reshape(n)
+                # slice - only that slice of row i (at the "p_op" axes) is filled in.
+                out[(i,) + tuple(global_slices)] = value
             else:
                 value = self._executor.expectation_value_derivatives(
                     self._native_circuit, obs, derivative_param, **obs_parameters
@@ -491,24 +699,53 @@ class LowLevelQNNUnified(LowLevelQNNBase):
         *values,
     ) -> dict:
         if self._framework in _NATIVE_FRAMEWORKS:
-            native_keys = [v for v in values if isinstance(v, str) and v in self._NATIVE_KEYS]
-            var_keys = [v for v in values if isinstance(v, str) and v in _VAR_FAMILY]
+            allowed_native_keys = self._NATIVE_KEYS
+            allowed_post_keys = dict(_VAR_FAMILY)
+            # The chained-derivative keys (dfdxdx, ...) and the laplace family built on
+            # top of them are only available through qc_executor's Qiskit backend (see
+            # _NATIVE_KEY_INFO_QISKIT_ONLY's docstring) - every other framework falls
+            # through to the legacy engine for them exactly as before.
+            if self._framework == "qiskit":
+                allowed_native_keys = allowed_native_keys | _NATIVE_KEYS_QISKIT_ONLY
+                allowed_post_keys.update(_LAPLACE_FAMILY)
+            native_keys = [v for v in values if isinstance(v, str) and v in allowed_native_keys]
+            var_keys = [v for v in values if isinstance(v, str) and v in allowed_post_keys]
+            # Generic identity-based derivative keys (Parameter/Parameters/tuple of those,
+            # e.g. `llqnn.parameters[0]`) are native only for Qiskit - qc_executor's tuple
+            # mechanism (WP-G) resolves them by object identity against
+            # self._native_circuit/self._native_observable (see _build_derivative_arg).
+            # Every other framework keeps routing them to the fallback engine, exactly as
+            # before, via fallback_keys below.
+            if self._framework == "qiskit":
+                raw_keys = [
+                    v
+                    for v in values
+                    if not isinstance(v, str) and isinstance(v, (tuple, Parameters, Parameter))
+                ]
+            else:
+                raw_keys = []
         else:
+            allowed_post_keys = {}
             native_keys = []
             var_keys = []
-        fallback_keys = [v for v in values if v not in native_keys and v not in var_keys]
+            raw_keys = []
+        fallback_keys = [
+            v for v in values if v not in native_keys and v not in var_keys and v not in raw_keys
+        ]
 
         # "var" and its gradients need nothing beyond the plain expectation value and its
-        # first derivatives (see _VAR_FAMILY) - fold their dependencies into the same
-        # native batch call instead of evaluating them separately.
-        underlying = {dep for key in var_keys for dep in _VAR_FAMILY[key][0]}
-        combined_native_keys = sorted(set(native_keys) | underlying)
+        # first derivatives (see _VAR_FAMILY); "laplace" and its gradients need nothing
+        # beyond a single chained higher-order key (see _LAPLACE_FAMILY) - fold their
+        # dependencies into the same native batch call instead of evaluating them
+        # separately.
+        underlying = {dep for key in var_keys for dep in allowed_post_keys[key][0]}
+        combined_native_keys = sorted(set(native_keys) | underlying) + list(dict.fromkeys(raw_keys))
 
         result = {}
         if combined_native_keys:
             result.update(self._evaluate_native(x, param, param_op, combined_native_keys))
         for key in var_keys:
-            _, evaluation_function = _VAR_FAMILY[key]
+            _, evaluation_function = allowed_post_keys[key]
             result[key] = evaluation_function(result)
         if fallback_keys:
             result.update(self._fallback._evaluate(x, param, param_op, *fallback_keys))

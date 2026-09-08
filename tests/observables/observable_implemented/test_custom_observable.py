@@ -132,7 +132,7 @@ class TestCustomObservable:
 
         # Prepare computational basis state
         qc = QuantumCircuit(num_qubits)
-        
+
         for qubit_index, bit in enumerate(basis_state):
             if bit == "1":
                 qc.x(qubit_index)

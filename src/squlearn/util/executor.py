@@ -1885,9 +1885,7 @@ class Executor:
 
         if self._qc_executor is None or self._qc_executor.session is None:
             raise RuntimeError("No session found!")
-        self._logger.info(
-            "Executor closed session: %s", self._qc_executor.session.session_id
-        )
+        self._logger.info("Executor closed session: %s", self._qc_executor.session.session_id)
         self._qc_executor.close_session()
 
     @property

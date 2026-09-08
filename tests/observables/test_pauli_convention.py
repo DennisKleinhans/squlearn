@@ -155,9 +155,7 @@ def test_summed_probabilities_weights_address_physical_qubits(
     that physical qubit."""
     executor = Executor(framework)
 
-    ob = SummedProbabilities(
-        NUM_QUBITS, one_state=True, full_sum=True, include_identity=False
-    )
+    ob = SummedProbabilities(NUM_QUBITS, one_state=True, full_sum=True, include_identity=False)
     weight = np.zeros(ob.num_parameters)
     weight[weighted_qubit] = 1.0
     operator = ob.get_pauli(weight)
