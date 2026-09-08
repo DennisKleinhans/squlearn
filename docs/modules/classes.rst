@@ -214,7 +214,6 @@ QNN Core
    qnn.lowlevel_qnn.LowLevelQNN
    qnn.lowlevel_qnn.lowlevel_qnn_pennylane.LowLevelQNNPennyLane
    qnn.lowlevel_qnn.lowlevel_qnn_qiskit.LowLevelQNNQiskit
-   qnn.lowlevel_qnn.lowlevel_qnn_qulacs.LowLevelQNNQulacs
    qnn.lowlevel_qnn.lowlevel_qnn_base.LowLevelQNNBase
    qnn.loss.SquaredLoss
    qnn.loss.MeanSquaredError
@@ -268,19 +267,6 @@ PennyLane interface
    :template: class.rst
 
    util.pennylane.PennyLaneCircuit
-
-Qulacs interface
-------------------------------------
-
-.. currentmodule:: squlearn
-
-.. autosummary::
-   :nosignatures:
-   :toctree: generated/
-   :template: class.rst
-
-   util.qulacs.QulacsCircuit
-
 
 Base Classes
 ------------------------------------

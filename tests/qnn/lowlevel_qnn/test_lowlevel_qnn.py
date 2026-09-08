@@ -8,7 +8,6 @@ from squlearn.observables import SinglePauli, SummedPaulis
 from squlearn.qnn.lowlevel_qnn import LowLevelQNN
 from squlearn.qnn.lowlevel_qnn.lowlevel_qnn_qiskit import LowLevelQNNQiskit
 from squlearn.qnn.lowlevel_qnn.lowlevel_qnn_pennylane import LowLevelQNNPennyLane
-from squlearn.qnn.lowlevel_qnn.lowlevel_qnn_qulacs import LowLevelQNNQulacs
 
 
 def get_values(framework):
@@ -45,23 +44,31 @@ def get_values(framework):
 
 
 def test_backends_consistency():
-    """Tests that different derivatives computed with different frameworks are consistent."""
+    """Tests that different derivatives computed with different frameworks are consistent.
+
+    Qulacs is intentionally excluded here: this test relies on tuple-based
+    derivative specs built from llqnn.parameters[i]/parameters_operator[i],
+    which - like every non-native derivative key - route through the
+    framework-specific fallback engine. Qulacs has none (see
+    LowLevelQNNUnified._fallback); its native-key agreement with the other
+    two frameworks is covered separately, see
+    test_var_family_is_native_and_matches_legacy_engine's git history for the
+    bit-exact proof recorded before the legacy Qulacs engine was removed, and
+    test_multiple_output_shape_with_n_observables below for its continued
+    coverage of the still-supported native keys.
+    """
 
     values_qiskit, qiskit_param_key, qiskit_param_op_key = get_values("qiskit")
     values_pennylane, pennylane_param_key, pennylane_param_op_key = get_values("pennylane")
-    values_qulacs, qulacs_param_key, qulacs_param_op_key = get_values("qulacs")
 
     for k in ["f", "dfdp", "dfdx", "var"]:
         assert np.allclose(values_qiskit[k], values_pennylane[k])
-        assert np.allclose(values_qiskit[k], values_qulacs[k])
 
     assert np.allclose(values_qiskit[qiskit_param_key], values_pennylane[pennylane_param_key])
-    assert np.allclose(values_qiskit[qiskit_param_key], values_qulacs[qulacs_param_key])
 
     assert np.allclose(
         values_qiskit[qiskit_param_op_key], values_pennylane[pennylane_param_op_key]
     )
-    assert np.allclose(values_qiskit[qiskit_param_op_key], values_qulacs[qulacs_param_op_key])
 
 
 @pytest.mark.parametrize("framework", ["pennylane", "qiskit", "qulacs"])
@@ -92,13 +99,12 @@ def test_multiple_output_shape_with_n_observables(framework, n_obs):
 _LEGACY_ENGINE = {
     "qiskit": LowLevelQNNQiskit,
     "pennylane": LowLevelQNNPennyLane,
-    "qulacs": LowLevelQNNQulacs,
 }
 
 _VAR_FAMILY_KEYS = ("var", "varf", "dvardx", "dvardp", "dvardop")
 
 
-@pytest.mark.parametrize("framework", ["qiskit", "pennylane", "qulacs"])
+@pytest.mark.parametrize("framework", ["qiskit", "pennylane"])
 @pytest.mark.parametrize(
     "observable",
     [
@@ -120,7 +126,15 @@ def test_var_family_is_native_and_matches_legacy_engine(framework, observable):
     """The var/dvardx/dvardp/dvardop family is evaluated via qc_executor's native
     <O^2> path (LowLevelQNNUnified._native_observable_squared), not the legacy
     per-framework fallback engine - verified both by the fallback never being built
-    and by bit-for-bit agreement with the legacy engine's own computation."""
+    and by bit-for-bit agreement with the legacy engine's own computation.
+
+    Qulacs is not parametrized here: it has no legacy engine left to compare
+    against (removed together with LowLevelQNNQulacs/util/qulacs/), so it is
+    covered separately by test_var_family_is_native_for_qulacs below. Before
+    the removal, this same test - then parametrized over qiskit/pennylane/
+    qulacs alike - passed for all three, which is the bit-exact proof that
+    the removal was safe for the native key set.
+    """
     pqc = ParamZFeatureMap(3, 2)
     obs = observable(pqc)
     rng = np.random.default_rng(3)
@@ -153,3 +167,26 @@ def test_var_family_is_native_and_matches_legacy_engine(framework, observable):
 
     for key in comparison_keys:
         np.testing.assert_allclose(native[key], legacy[key], atol=1e-8)
+
+
+def test_var_family_is_native_for_qulacs():
+    """Qulacs has no legacy engine to compare against (see the test above), so
+    this checks the same native <O^2> var-family path against a qiskit
+    statevector reference instead - real cross-framework agreement, not a
+    self-consistency check against qc_executor's own computation."""
+    pqc = ParamZFeatureMap(3, 2)
+    obs = SummedPaulis(pqc.num_qubits)
+    rng = np.random.default_rng(3)
+    x = rng.random((3, 2))
+    param = rng.random(pqc.num_parameters)
+    param_op = rng.random(obs.num_parameters)
+
+    llqnn_qulacs = LowLevelQNN(pqc, obs, Executor("qulacs"), num_features=2)
+    native = llqnn_qulacs.evaluate(x, param, param_op, "f", *_VAR_FAMILY_KEYS)
+    assert llqnn_qulacs._fallback_engine is None
+
+    llqnn_qiskit = LowLevelQNN(pqc, obs, Executor("statevector_simulator"), num_features=2)
+    reference = llqnn_qiskit.evaluate(x, param, param_op, "f", *_VAR_FAMILY_KEYS)
+
+    for key in ("f", *_VAR_FAMILY_KEYS):
+        np.testing.assert_allclose(native[key], reference[key], atol=1e-8)

@@ -1,9 +1,11 @@
-"""Tests for transpiler target alias normalization on PennyLane/Qulacs targets."""
+"""Tests for transpiler target alias normalization on the PennyLane target.
+
+qulacs no longer has an sQUlearn-side target (util/qulacs/ was removed - qc_executor's
+own QulacsExecutor transpiles natively, with its own separate test coverage)."""
 
 from qiskit import QuantumCircuit, transpile
 
 from squlearn.util.pennylane.pennylane_gates import qiskit_pennylane_target
-from squlearn.util.qulacs.qulacs_gates import qiskit_qulacs_target
 
 
 class TestTranspilerTargetAliases:
@@ -20,13 +22,3 @@ class TestTranspilerTargetAliases:
         op_names = [inst.operation.name for inst in transpiled.data]
 
         assert all(name in {"id", "cx", "ccx"} for name in op_names)
-
-    def test_qulacs_target_normalizes_aliases(self):
-        qc = QuantumCircuit(2)
-        qc.id(0)
-        qc.cx(0, 1)
-
-        transpiled = transpile(qc, target=qiskit_qulacs_target, optimization_level=0)
-        op_names = [inst.operation.name for inst in transpiled.data]
-
-        assert all(name in {"id", "cx"} for name in op_names)

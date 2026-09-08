@@ -156,7 +156,6 @@ from .execution import AutomaticBackendSelection, ParallelEstimator, ParallelSam
 from .execution.parallel_estimator import ParallelEstimatorV1, ParallelEstimatorV2
 from .execution.parallel_sampler import ParallelSamplerV1, ParallelSamplerV2
 from .pennylane import PennyLaneCircuit
-from .qulacs import QulacsCircuit
 
 
 class SessionContextMisuseWarning(UserWarning):
@@ -802,61 +801,6 @@ class Executor:
     def quantum_framework(self) -> str:
         """Return the quantum framework that is used in the executor."""
         return self._quantum_framework
-
-    def qulacs_execute(
-        self, qulacs_execution: callable, qulacs_circuit: QulacsCircuit, **kwargs
-    ) -> np.ndarray:
-        """
-        Function for executing of Qulacs circuits with the Executor with caching
-
-        Args:
-            qulacs_execution (callable): The Qulacs execution function from qulacs_execution
-            qulacs_circuit (QulacsCircuit): The Qulacs circuit data structure
-            **kwargs: Parameter values of the qulacs circuit and observable, name must match
-                the parameter names in the circuit and observable
-
-        Returns:
-            Numpy array: The result of the circuit execution
-        """
-
-        result = None
-        cached = True
-        hash_value = None
-
-        # Check if the result of the qulacs execution is already cached
-        if self._caching:
-
-            # Get hash value of the circuit
-            if hasattr(qulacs_execution, "__name__"):
-                func_name = qulacs_execution.__name__
-            else:
-                raise ValueError("Unknown function specified as qulacs execution")
-            hash_value = self._cache.hash_variable(
-                ["qulacs", func_name, qulacs_circuit.hash, kwargs]
-            )
-
-            # Check if the result is already cached
-            result = self._cache.get_file(hash_value)
-
-        # If the result is not cached, execute the circuit
-        if result is None:
-            if self._caching:
-                self._logger.info(
-                    f"Execution of qulacs circuit with hash value: {{}}".format(hash_value)
-                )
-            else:
-                self._logger.info(f"Execution of qulacs circuit")
-            result = qulacs_execution(qulacs_circuit, **kwargs)
-            cached = False
-            self._logger.info(f"Execution of qulacs successful")
-        elif self._caching:
-            self._logger.info(f"Cached result found with hash value: {{}}".format(hash_value))
-
-        # Store the result in the cache if caching is enabled and not already cached
-        if self._caching and not cached:
-            self._cache.store_file(hash_value, copy.copy(result))
-
-        return result
 
     def pennylane_execute(self, pennylane_circuit: callable, *args, **kwargs):
         """
@@ -1740,6 +1684,18 @@ class Executor:
             circuit, observable, *derivative, **parameters
         )
 
+    def statevector(self, circuit, **parameters):
+        """Compute the statevector of *circuit* directly through the
+        underlying ``qc_executor`` instance.
+        """
+        return self._qc_executor.statevector(circuit, **parameters)
+
+    def probabilities(self, circuit, *, cutoff: float = 0.0, **parameters):
+        """Compute the measurement probabilities of *circuit* directly
+        through the underlying ``qc_executor`` instance.
+        """
+        return self._qc_executor.probabilities(circuit, cutoff=cutoff, **parameters)
+
     def set_shots(self, num_shots: Union[int, None]) -> None:
         """Sets the number shots for the next evaluations.
 
@@ -1761,6 +1717,8 @@ class Executor:
                     "Qulacs does not support shot-based sampling;"
                     " it only supports statevector simulation."
                 )
+            if self._qc_executor is not None:
+                self._qc_executor.shots = None
 
         elif self.quantum_framework == "pennylane":
 
@@ -1815,7 +1773,10 @@ class Executor:
 
         if self.quantum_framework == "qulacs":
 
-            return None
+            # Always None: set_shots() rejects any non-zero value for qulacs
+            # (statevector simulation only), so this is the single source of
+            # truth rather than a hardcoded assumption of that fact.
+            shots = self._qc_executor.shots if self._qc_executor is not None else None
 
         elif self.quantum_framework == "pennylane":
 

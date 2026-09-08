@@ -16,7 +16,6 @@ from ...util.data_preprocessing import adjust_features, adjust_parameters, to_tu
 from .lowlevel_qnn_base import LowLevelQNNBase
 from .lowlevel_qnn_qiskit import LowLevelQNNQiskit
 from .lowlevel_qnn_pennylane import LowLevelQNNPennyLane
-from .lowlevel_qnn_qulacs import LowLevelQNNQulacs
 from .evaluation_classes import eval_var, eval_dvardx, eval_dvardp, eval_dvardop
 
 # Frameworks for which Executor.expectation_value/expectation_value_derivatives
@@ -80,9 +79,12 @@ class LowLevelQNNUnified(LowLevelQNNBase):
     values of the squared observable (``fcc``/``dfccdx``/``dfccdp``/``dfccdop``), and the
     ``var``/``dvardx``/``dvardp``/``dvardop`` family derived from those, directly through
     ``qc_executor`` (no ``OpTree`` construction) for frameworks it supports. Falls back to
-    the legacy framework-specific engine (:class:`LowLevelQNNQiskit`, :class:`LowLevelQNNPennyLane`,
-    ...) for every other requested derivative (``dfdxdx``, ``laplace``, ...) as well as for
-    frameworks qc_executor does not yet cover.
+    the legacy framework-specific engine (:class:`LowLevelQNNQiskit`, :class:`LowLevelQNNPennyLane`)
+    for every other requested derivative (``dfdxdx``, ``laplace``, ...) as well as for
+    frameworks qc_executor does not yet cover. Qulacs has no such fallback engine - its
+    legacy engine (``LowLevelQNNQulacs``) declared every one of those additional keys as
+    unsupported already, so nothing was lost by removing it; any such key raises
+    ``NotImplementedError`` directly for qulacs (see :attr:`_fallback`).
 
     Args:
         pqc (EncodingCircuitBase): The parameterized quantum circuit.
@@ -189,10 +191,20 @@ class LowLevelQNNUnified(LowLevelQNNBase):
         self.result_container = {}
 
     @property
-    def _fallback(self) -> Union[LowLevelQNNQiskit, LowLevelQNNPennyLane, LowLevelQNNQulacs]:
+    def _fallback(self) -> Union[LowLevelQNNQiskit, LowLevelQNNPennyLane]:
         """Lazily-constructed legacy, framework-specific engine. Used for every derivative
         order/kind not covered by the native qc_executor path (``dfdxdx``, ``laplace``, ``var``,
-        ...), and for every key at all when the framework has no qc_executor bridge yet."""
+        ...), and for every key at all when the framework has no qc_executor bridge yet.
+
+        Raises:
+            NotImplementedError: For qulacs, always - there is no fallback engine for it
+                (see the class docstring). Accessing this property for qulacs means either
+                a non-native derivative key was requested, or (less obviously) one of
+                :attr:`parameters`/:attr:`features`/:attr:`parameters_operator` was read:
+                those return the fallback engine's own parameter-vector objects (needed
+                for identity-based tuple derivative specs), not the ones qc_executor
+                uses natively.
+        """
         if self._fallback_engine is None:
             if self._framework == "qiskit":
                 self._fallback_engine = LowLevelQNNQiskit(
@@ -214,13 +226,12 @@ class LowLevelQNNUnified(LowLevelQNNBase):
                     caching=self.caching,
                 )
             elif self._framework == "qulacs":
-                self._fallback_engine = LowLevelQNNQulacs(
-                    self._pqc,
-                    self._observable,
-                    self._executor,
-                    self._num_features,
-                    post_processing=None,
-                    caching=self.caching,
+                raise NotImplementedError(
+                    "No fallback engine exists for qulacs: only the native evaluation "
+                    f"keys {sorted(self._NATIVE_KEYS | set(_VAR_FAMILY))} are supported. "
+                    "This was already the case before the legacy LowLevelQNNQulacs engine "
+                    "was removed - it declared every other key unsupported "
+                    "(dfdxdx, laplace, dfdpdp, ..., fischer)."
                 )
             else:
                 raise RuntimeError(f"Unsupported quantum framework: {self._framework}")

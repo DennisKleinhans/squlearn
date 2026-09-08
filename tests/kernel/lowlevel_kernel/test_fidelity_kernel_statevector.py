@@ -1,4 +1,3 @@
-import pickle
 from unittest.mock import MagicMock
 import numpy as np
 import pytest
@@ -313,26 +312,6 @@ def _make_statevector_kernel(framework):
     if kernel.num_parameters > 0:
         kernel.assign_training_parameters(rng.random(kernel.num_parameters))
     return kernel
-
-
-def test_pickle_roundtrip_preserves_kernel_qulacs():
-    """A qulacs statevector kernel must survive stdlib pickling.
-
-    ``_cached_execution`` is an ``lru_cache``-wrapped local closure that cannot
-    be pickled by reference (the original ``AttributeError: Can't get local
-    object ...``); ``__getstate__``/``__setstate__`` drop and rebuild it. The
-    pennylane circuit holds a sympy lambda that stdlib pickle cannot handle
-    regardless, so that framework is covered by the dill-based ModelPickler
-    serialization tests and by ``test_getstate_setstate_rebuilds_executor``.
-    """
-    kernel = _make_statevector_kernel("qulacs")
-    x = np.random.default_rng(0).random((4, 2))
-    expected = kernel.evaluate(x, x)
-
-    restored = pickle.loads(pickle.dumps(kernel))
-
-    assert "_cached_execution" in vars(restored)
-    np.testing.assert_allclose(restored.evaluate(x, x), expected)
 
 
 @pytest.mark.parametrize("framework", ["qulacs", "pennylane"])

@@ -78,12 +78,8 @@ from squlearn.util.executor import (
     SessionContextMisuseWarning,
 )
 from squlearn.util.pennylane import PennyLaneCircuit
-from squlearn.util.qulacs import QulacsCircuit
-from squlearn.util.qulacs.qulacs_execution import (
-    qulacs_evaluate,
-    qulacs_evaluate_statevector,
-    qulacs_evaluate_probabilities,
-)
+
+from qc_executor import QuantumCircuit as QcExecutorQuantumCircuit, QuantumOperator
 
 
 @pytest.mark.parametrize("qpu_parallelization", [None, 3])
@@ -422,55 +418,53 @@ class TestExecutorQulacs:
         executor = ExecutorQulacs
         assert executor.shots is None
 
-    @pytest.mark.parametrize(
-        "qulacs_execution_func",
-        [
-            qulacs_evaluate,
-            qulacs_evaluate_statevector,
-            qulacs_evaluate_probabilities,
-        ],
-    )
-    def test_qulacs_evaluate_simple(
-        self, qulacs_execution_func, ExecutorQulacs, simple_circuit, observable
-    ):
-        """Tests the Qulacs execution of a circuit with an observable return type."""
-
-        assert_dict = {
-            "qulacs_evaluate": 1.0,
-            "qulacs_evaluate_probabilities": np.array([0.0, 0.0, 0.0, 1.0]),
-            "qulacs_evaluate_statevector": np.array([0.0, 0.0, 0.0, 1.0]),
-        }
-
+    def test_expectation_value_simple(self, ExecutorQulacs, simple_circuit, observable):
+        """Executor.expectation_value() through the native qc_executor path -
+        the successor to the removed Executor.qulacs_execute()."""
         executor = ExecutorQulacs
-        circuit = QulacsCircuit(simple_circuit, observable)
+        circuit = QcExecutorQuantumCircuit.from_qiskit(simple_circuit)
+        op = QuantumOperator(_native_operator=observable)
 
-        res = executor.qulacs_execute(qulacs_execution_func, circuit)
-        assert np.allclose(assert_dict[qulacs_execution_func.__name__], res)
+        result = executor.expectation_value(circuit, op)
 
-    @pytest.mark.parametrize(
-        "qulacs_execution_func",
-        [
-            qulacs_evaluate,
-            qulacs_evaluate_statevector,
-            qulacs_evaluate_probabilities,
-        ],
-    )
-    def test_qulacs_evaluate_parameterized(
-        self, qulacs_execution_func, ExecutorQulacs, parameterized_circuit, observable
-    ):
-        """Tests the Qulacs execution of a circuit with an observable return type."""
+        assert np.isclose(result, 1.0)
 
-        assert_dict = {
-            "qulacs_evaluate": 1.0,
-            "qulacs_evaluate_probabilities": np.array([0.0, 0.0, 0.0, 1.0]),
-            "qulacs_evaluate_statevector": np.array([0.0, 0.0, 0.0, 1.0]),
-        }
-
+    def test_statevector_simple(self, ExecutorQulacs, simple_circuit):
+        """Executor.statevector() through the native qc_executor path."""
         executor = ExecutorQulacs
-        circuit = QulacsCircuit(parameterized_circuit, observable)
+        circuit = QcExecutorQuantumCircuit.from_qiskit(simple_circuit)
 
-        res = executor.qulacs_execute(qulacs_execution_func, circuit, x=[np.pi, np.pi])
-        assert np.allclose(assert_dict[qulacs_execution_func.__name__], res)
+        result = executor.statevector(circuit)
+
+        assert np.allclose(result, [0.0, 0.0, 0.0, 1.0])
+
+    def test_probabilities_simple(self, ExecutorQulacs, simple_circuit):
+        """Executor.probabilities() through the native qc_executor path."""
+        executor = ExecutorQulacs
+        circuit = QcExecutorQuantumCircuit.from_qiskit(simple_circuit)
+
+        result = executor.probabilities(circuit)
+
+        assert result == {3: 1.0}
+
+    def test_expectation_value_parameterized(
+        self, ExecutorQulacs, parameterized_circuit, observable
+    ):
+        executor = ExecutorQulacs
+        circuit = QcExecutorQuantumCircuit.from_qiskit(parameterized_circuit)
+        op = QuantumOperator(_native_operator=observable)
+
+        result = executor.expectation_value(circuit, op, x=[np.pi, np.pi])
+
+        assert np.isclose(result, 1.0)
+
+    def test_statevector_parameterized(self, ExecutorQulacs, parameterized_circuit):
+        executor = ExecutorQulacs
+        circuit = QcExecutorQuantumCircuit.from_qiskit(parameterized_circuit)
+
+        result = executor.statevector(circuit, x=[np.pi, np.pi])
+
+        assert np.allclose(result, [0.0, 0.0, 0.0, 1.0])
 
 
 class _FakeQcExecutor:

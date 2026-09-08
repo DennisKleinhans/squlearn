@@ -15,9 +15,6 @@ from ...util.executor import Executor
 from ...util.pennylane.pennylane_gates import qiskit_pennylane_target
 from ...util.pennylane.pennylane_circuit import PennyLaneCircuit
 
-from ...util.qulacs.qulacs_circuit import QulacsCircuit
-from ...util.qulacs.qulacs_execution import qulacs_evaluate_statevector
-
 from ...util.data_preprocessing import to_tuple, adjust_features
 
 
@@ -78,7 +75,10 @@ class FidelityKernelStatevector:
                 self._pennylane_circuit = PennyLaneCircuit(circuit, "state")
 
             elif self._executor.quantum_framework == "qulacs":
-                self._qulacs_circuit = QulacsCircuit(enc_circ.qiskit_circuit, None)
+                # No sQUlearn-side circuit wrapper needed: qc_executor's own
+                # QulacsExecutor transpiles/caches the generic circuit itself
+                # (see Executor.statevector(), used below).
+                self._native_circuit = enc_circ
 
             else:
                 raise RuntimeError(
@@ -141,25 +141,18 @@ class FidelityKernelStatevector:
         if not self._executor.is_statevector:
             return
 
-        if getattr(self, "_qulacs_circuit", None) is not None:
+        if getattr(self, "_native_circuit", None) is not None:
 
             @lru_cache(maxsize=self._cache_size)
             def qulacs_circuit_executor(*args):
                 args_numpy = [np.array(arg) for arg in args]
                 if len(args_numpy) == 0:
-                    return self._executor.qulacs_execute(
-                        qulacs_evaluate_statevector, self._qulacs_circuit
-                    )
+                    return self._executor.statevector(self._native_circuit)
                 elif len(args_numpy) == 1:
-                    return self._executor.qulacs_execute(
-                        qulacs_evaluate_statevector, self._qulacs_circuit, x=args_numpy[0]
-                    )
+                    return self._executor.statevector(self._native_circuit, x=args_numpy[0])
                 elif len(args_numpy) == 2:
-                    return self._executor.qulacs_execute(
-                        qulacs_evaluate_statevector,
-                        self._qulacs_circuit,
-                        p=args_numpy[0],
-                        x=args_numpy[1],
+                    return self._executor.statevector(
+                        self._native_circuit, p=args_numpy[0], x=args_numpy[1]
                     )
 
             self._cached_execution = qulacs_circuit_executor
