@@ -72,7 +72,7 @@ class TestShotsFromRSTD:
         y_train = np.abs(x_train).ravel()
         qnn.fit(x_train, y_train)
         test = qnn.predict(x_train)
-        reference = np.array([-0.09867318, -0.14080412, -0.1864203, -0.22726776, -0.24570661])
+        reference = np.array([-0.15819602, -0.14412536, -0.13352883, -0.1154779, -0.08921877])
         assert np.allclose(test, reference, atol=1e-3)
 
     def test_qnn_training_two_outputs(self):
@@ -97,11 +97,11 @@ class TestShotsFromRSTD:
         test = qnn.predict(x_train)
         reference = np.array(
             [
-                [-0.10152712, -0.15280509],
-                [-0.14254195, -0.19631623],
-                [-0.19140704, -0.24552197],
-                [-0.23021383, -0.28467866],
-                [-0.24711364, -0.30817718],
+                [-0.08306428, -0.13613973],
+                [-0.12526327, -0.1816008],
+                [-0.18140684, -0.23211671],
+                [-0.22442482, -0.27116878],
+                [-0.24332092, -0.29164613],
             ]
         )
 

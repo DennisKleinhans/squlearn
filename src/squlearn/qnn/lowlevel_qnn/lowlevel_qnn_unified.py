@@ -526,8 +526,10 @@ class LowLevelQNNUnified(LowLevelQNNBase):
             attr = _NATIVE_KEY_TRAILING_DIM_ATTR_ALL[key]
         except KeyError:
             raise ValueError(f"Unknown native key: {key}") from None
-        dims = tuple(getattr(self, a) for a in attr) if isinstance(attr, tuple) else (
-            getattr(self, attr),
+        dims = (
+            tuple(getattr(self, a) for a in attr)
+            if isinstance(attr, tuple)
+            else (getattr(self, attr),)
         )
         return (n_op,) + dims if multi else dims
 
@@ -538,7 +540,9 @@ class LowLevelQNNUnified(LowLevelQNNBase):
             # A raw identity-based key (see _build_derivative_arg) always targets the plain
             # observable "O" - LowLevelQNNQiskit's own Expec.from_tuple has no squared-
             # observable form for these either.
-            observable_attr, derivative_param = "_native_observable", self._build_derivative_arg(key)
+            observable_attr, derivative_param = "_native_observable", self._build_derivative_arg(
+                key
+            )
         observable = getattr(self, observable_attr)
         has_p_op = self._is_p_op_entry(derivative_param) or (
             isinstance(derivative_param, tuple)
@@ -566,7 +570,9 @@ class LowLevelQNNUnified(LowLevelQNNBase):
         if isinstance(key, str):
             observable_attr, derivative_param = _NATIVE_KEY_INFO_ALL[key]
         else:
-            observable_attr, derivative_param = "_native_observable", self._build_derivative_arg(key)
+            observable_attr, derivative_param = "_native_observable", self._build_derivative_arg(
+                key
+            )
         observable_list = getattr(self, observable_attr)
         needs_local_p_op_slice = self._framework in _LIST_OBSERVABLE_NEEDS_PER_OBSERVABLE_CALLS
         # Positions of "p_op" within the derivative tuple/shape (every position for a tuple
@@ -584,7 +590,11 @@ class LowLevelQNNUnified(LowLevelQNNBase):
         for i, (obs, (ioff, n)) in enumerate(zip(observable_list, self._observable_p_op_slices)):
             if p_op_axes and any(
                 self._p_op_entry_excludes_observable(
-                    derivative_param[ax] if isinstance(derivative_param, tuple) else derivative_param,
+                    (
+                        derivative_param[ax]
+                        if isinstance(derivative_param, tuple)
+                        else derivative_param
+                    ),
                     ioff,
                     n,
                 )
@@ -598,7 +608,9 @@ class LowLevelQNNUnified(LowLevelQNNBase):
             if needs_local_p_op_slice:
                 obs_parameters["p_op"] = parameters["p_op"][ioff : ioff + n]
             if derivative_param is None:
-                out[i] = self._executor.expectation_value(self._native_circuit, obs, **obs_parameters)
+                out[i] = self._executor.expectation_value(
+                    self._native_circuit, obs, **obs_parameters
+                )
             elif p_op_axes:
                 value = self._executor.expectation_value_derivatives(
                     self._native_circuit, obs, derivative_param, **obs_parameters
@@ -606,7 +618,11 @@ class LowLevelQNNUnified(LowLevelQNNBase):
                 dest_shape = out[i].shape
 
                 def _local_size_and_slice(ax):
-                    entry = derivative_param[ax] if isinstance(derivative_param, tuple) else derivative_param
+                    entry = (
+                        derivative_param[ax]
+                        if isinstance(derivative_param, tuple)
+                        else derivative_param
+                    )
                     if isinstance(entry, str):
                         return n, slice(ioff, ioff + n)
                     return 1, slice(entry.index, entry.index + 1)
@@ -631,6 +647,193 @@ class LowLevelQNNUnified(LowLevelQNNBase):
                 out[i] = np.asarray(value, dtype=float).reshape(-1)
         return out
 
+    def _compute_native_batched(self, key, parameters: dict, batch_size: int) -> np.ndarray:
+        """Same contract as :meth:`_compute_native`, but exactly one of
+        ``parameters["x"]``/``["p"]``/``["p_op"]`` is a 2D batch (shape
+        ``(batch_size, dim)``) instead of a single 1D vector - qc_executor batches
+        that axis internally in a single call instead of one call per
+        point. Always returns an array of shape ``(batch_size,) + self._trailing_shape(key)``,
+        batch axis first, regardless of where qc_executor's own call places it.
+        """
+        if isinstance(key, str):
+            observable_attr, derivative_param = _NATIVE_KEY_INFO_ALL[key]
+        else:
+            observable_attr, derivative_param = "_native_observable", self._build_derivative_arg(
+                key
+            )
+        observable = getattr(self, observable_attr)
+        has_p_op = self._is_p_op_entry(derivative_param) or (
+            isinstance(derivative_param, tuple)
+            and any(self._is_p_op_entry(e) for e in derivative_param)
+        )
+        # A batched "p_op" additionally forces the per-observable path even when this
+        # key's own derivative doesn't involve p_op at all (has_p_op False): qc_executor's
+        # combined list-observable call cannot resolve a shared "p_op" batch against a
+        # list whose entries reference different-sized (including zero-sized) slices of
+        # it.
+        p_op_is_batched = np.ndim(parameters.get("p_op")) == 2
+        if self.multiple_output and (
+            has_p_op
+            or p_op_is_batched
+            or self._framework in _LIST_OBSERVABLE_NEEDS_PER_OBSERVABLE_CALLS
+        ):
+            return self._compute_native_per_observable_batched(key, parameters, batch_size)
+        if derivative_param is None:
+            raw = self._executor.expectation_value(self._native_circuit, observable, **parameters)
+        else:
+            raw = self._executor.expectation_value_derivatives(
+                self._native_circuit, observable, derivative_param, **parameters
+            )
+        raw = np.asarray(raw, dtype=float)
+        if self.multiple_output:
+            # observable is a list: qc_executor's axis convention is (n_op, batch, ...) -
+            # move batch to the front to match this method's contract.
+            raw = np.moveaxis(raw, 1, 0)
+        # A multi-element derivative_param may still carry a structurally size-1 axis
+        # from OpTree's differentiation machinery (see WP-11b) - reshape absorbs it.
+        return raw.reshape((batch_size,) + self._trailing_shape(key))
+
+    def _compute_native_per_observable_batched(
+        self, key, parameters: dict, batch_size: int
+    ) -> np.ndarray:
+        """Batched counterpart of :meth:`_compute_native_per_observable` - see
+        :meth:`_compute_native_batched` for the shared batching contract."""
+        if isinstance(key, str):
+            observable_attr, derivative_param = _NATIVE_KEY_INFO_ALL[key]
+        else:
+            observable_attr, derivative_param = "_native_observable", self._build_derivative_arg(
+                key
+            )
+        observable_list = getattr(self, observable_attr)
+        needs_local_p_op_slice = self._framework in _LIST_OBSERVABLE_NEEDS_PER_OBSERVABLE_CALLS
+        if isinstance(derivative_param, tuple):
+            p_op_axes = [ax for ax, e in enumerate(derivative_param) if self._is_p_op_entry(e)]
+        elif self._is_p_op_entry(derivative_param):
+            p_op_axes = [0]
+        else:
+            p_op_axes = []
+        out = np.zeros((batch_size,) + self._trailing_shape(key), dtype=float)
+        for i, (obs, (ioff, n)) in enumerate(zip(observable_list, self._observable_p_op_slices)):
+            if p_op_axes and any(
+                self._p_op_entry_excludes_observable(
+                    (
+                        derivative_param[ax]
+                        if isinstance(derivative_param, tuple)
+                        else derivative_param
+                    ),
+                    ioff,
+                    n,
+                )
+                for ax in p_op_axes
+            ):
+                continue
+            obs_parameters = dict(parameters)
+            if needs_local_p_op_slice:
+                p_op_val = np.asarray(parameters["p_op"])
+                obs_parameters["p_op"] = (
+                    p_op_val[:, ioff : ioff + n]
+                    if p_op_val.ndim == 2
+                    else p_op_val[ioff : ioff + n]
+                )
+            dest_shape = out[:, i].shape  # (batch_size,) + dims
+            if derivative_param is None:
+                raw = self._executor.expectation_value(self._native_circuit, obs, **obs_parameters)
+                out[:, i] = self._broadcast_batched_result(raw, batch_size, dest_shape[1:])
+            elif p_op_axes:
+                raw = self._executor.expectation_value_derivatives(
+                    self._native_circuit, obs, derivative_param, **obs_parameters
+                )
+
+                def _local_size_and_slice(ax):
+                    entry = (
+                        derivative_param[ax]
+                        if isinstance(derivative_param, tuple)
+                        else derivative_param
+                    )
+                    if isinstance(entry, str):
+                        return n, slice(ioff, ioff + n)
+                    return 1, slice(entry.index, entry.index + 1)
+
+                # dims axes start at position 1 in dest_shape (position 0 is the batch
+                # axis prepended for batching) - offset p_op_axes (indices into dims,
+                # the unbatched numbering) by one accordingly.
+                local_sizes = [batch_size]
+                global_slices = [slice(None), i]
+                for ax in range(1, len(dest_shape)):
+                    if (ax - 1) in p_op_axes:
+                        size, gslice = _local_size_and_slice(ax - 1)
+                    else:
+                        size, gslice = dest_shape[ax], slice(None)
+                    local_sizes.append(size)
+                    global_slices.append(gslice)
+                out[tuple(global_slices)] = np.asarray(raw, dtype=float).reshape(
+                    tuple(local_sizes)
+                )
+            else:
+                raw = self._executor.expectation_value_derivatives(
+                    self._native_circuit, obs, derivative_param, **obs_parameters
+                )
+                out[:, i] = self._broadcast_batched_result(raw, batch_size, dest_shape[1:])
+        return out
+
+    @staticmethod
+    def _broadcast_batched_result(raw, batch_size: int, dims: tuple) -> np.ndarray:
+        """Reshape a per-observable batched-call result to ``(batch_size,) + dims``.
+
+        If the batched axis is "p_op" and this specific observable owns none of the
+        p_op parameters it carries (n=0), nothing relevant to this observable's own
+        circuit/operator actually varies across the batch - qc_executor then collapses
+        the call to a single unbatched result instead of one per batch row.
+        Detected by a size mismatch and handled by broadcasting that one
+        result across the batch axis: the value is identical for every row since the
+        observable doesn't depend on the batched parameter at all.
+        """
+        raw = np.asarray(raw, dtype=float)
+        expected = batch_size * int(np.prod(dims, dtype=int)) if dims else batch_size
+        if raw.size == expected:
+            return raw.reshape((batch_size,) + dims)
+        single = raw.reshape(dims)
+        return np.broadcast_to(single, (batch_size,) + dims).copy()
+
+    def _fill_native_array(
+        self,
+        arr: np.ndarray,
+        key,
+        x_inp: np.ndarray,
+        param_inp: np.ndarray,
+        param_op_inp: np.ndarray,
+        batch_axis: Union[str, None],
+    ) -> None:
+        """Fill ``arr[ix, ip, iop, ...]`` for every (x, param, param_op) combination.
+        Whichever axis actually varies (``batch_axis``, chosen by the caller: "x" is
+        preferred - the common "many training points, one current parameter vector"
+        case - then "p", then "p_op") is batched through a single qc_executor call
+        instead of one call per point; the other two axes (typically
+        singleton) are still looped in plain Python, since qc_executor batches only
+        one shared axis per call.
+        """
+        n_x, n_p, n_pop = len(x_inp), len(param_inp), len(param_op_inp)
+        if batch_axis == "x":
+            for ip, p_vec in enumerate(param_inp):
+                for iop, p_op_vec in enumerate(param_op_inp):
+                    arr[:, ip, iop, ...] = self._compute_native_batched(
+                        key, {"x": x_inp, "p": p_vec, "p_op": p_op_vec}, n_x
+                    )
+        elif batch_axis == "p":
+            for iop, p_op_vec in enumerate(param_op_inp):
+                arr[0, :, iop, ...] = self._compute_native_batched(
+                    key, {"x": x_inp[0], "p": param_inp, "p_op": p_op_vec}, n_p
+                )
+        elif batch_axis == "p_op":
+            arr[0, 0, :, ...] = self._compute_native_batched(
+                key, {"x": x_inp[0], "p": param_inp[0], "p_op": param_op_inp}, n_pop
+            )
+        else:
+            value = self._compute_native(
+                key, {"x": x_inp[0], "p": param_inp[0], "p_op": param_op_inp[0]}
+            )
+            arr[0, 0, 0, ...] = np.asarray(value, dtype=float).reshape(arr.shape[3:])
+
     def _evaluate_native(
         self,
         x: Union[float, np.ndarray],
@@ -641,6 +844,16 @@ class LowLevelQNNUnified(LowLevelQNNBase):
         x_inp, multi_x = adjust_features(x, self.num_features)
         param_inp, multi_param = adjust_parameters(param, self.num_parameters)
         param_op_inp, multi_param_op = adjust_parameters(param_op, self.num_parameters_observable)
+        n_x, n_p, n_pop = len(x_inp), len(param_inp), len(param_op_inp)
+
+        if n_x > 1:
+            batch_axis = "x"
+        elif n_p > 1:
+            batch_axis = "p"
+        elif n_pop > 1:
+            batch_axis = "p_op"
+        else:
+            batch_axis = None
 
         caching_tuple = None
         cached = {}
@@ -660,27 +873,19 @@ class LowLevelQNNUnified(LowLevelQNNBase):
                 continue
 
             trailing = self._trailing_shape(key)
-            arr = np.zeros((len(x_inp), len(param_inp), len(param_op_inp)) + trailing, dtype=float)
+            arr = np.zeros((n_x, n_p, n_pop) + trailing, dtype=float)
             if 0 not in trailing:
                 # A zero-sized trailing axis (e.g. dfdop with no observable parameters at
                 # all) has nothing to fill in - qc_executor has no "empty" result to return.
-                for ix, x_vec in enumerate(x_inp):
-                    for ip, p_vec in enumerate(param_inp):
-                        for iop, p_op_vec in enumerate(param_op_inp):
-                            value = self._compute_native(
-                                key, {"x": x_vec, "p": p_vec, "p_op": p_op_vec}
-                            )
-                            arr[ix, ip, iop, ...] = np.asarray(value, dtype=float).reshape(
-                                trailing
-                            )
+                self._fill_native_array(arr, key, x_inp, param_inp, param_op_inp, batch_axis)
 
             final_shape = []
             if multi_x:
-                final_shape.append(len(x_inp))
+                final_shape.append(n_x)
             if multi_param:
-                final_shape.append(len(param_inp))
+                final_shape.append(n_p)
             if multi_param_op:
-                final_shape.append(len(param_op_inp))
+                final_shape.append(n_pop)
             final_shape += list(trailing)
 
             out[key] = arr.reshape(final_shape) if final_shape else float(arr.reshape(()))
@@ -739,7 +944,9 @@ class LowLevelQNNUnified(LowLevelQNNBase):
         # dependencies into the same native batch call instead of evaluating them
         # separately.
         underlying = {dep for key in var_keys for dep in allowed_post_keys[key][0]}
-        combined_native_keys = sorted(set(native_keys) | underlying) + list(dict.fromkeys(raw_keys))
+        combined_native_keys = sorted(set(native_keys) | underlying) + list(
+            dict.fromkeys(raw_keys)
+        )
 
         result = {}
         if combined_native_keys:
