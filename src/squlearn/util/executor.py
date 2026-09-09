@@ -1645,28 +1645,6 @@ class Executor:
             raise RuntimeError("Sampler is only available for Qiskit backends")
         return self._qc_executor.sampler
 
-    @property
-    def optree_executor(self) -> str:
-        """A string that indicates which executor is used for OpTree execution."""
-        if self.quantum_framework == "qiskit" and self._qc_executor is not None:
-            if self._qc_executor.raw_estimator is not None:
-                return "estimator"
-            if self._qc_executor.raw_sampler is not None:
-                return "sampler"
-        return "estimator"
-
-    def qiskit_execute(self, run_input, **options):
-        """Routine that runs the given circuits on the backend.
-
-        Args:
-            run_input: An object to run on the backend (typically a circuit).
-            options: Additional arguments that are passed to the backend.
-
-        Return:
-            The Qiskit job object from the run.
-        """
-        return self.backend.run(run_input, **options)
-
     def expectation_value(self, circuit, observable, **parameters):
         """Evaluate the expectation value of *observable* on *circuit*
         directly through the underlying ``qc_executor`` instance - the
