@@ -4,7 +4,6 @@ from typing import Union
 from functools import lru_cache
 import numpy as np
 
-from qiskit.compiler import transpile
 from qiskit_algorithms.utils import algorithm_globals
 
 from qc_executor.parameters import Parameters
@@ -12,10 +11,7 @@ from qc_executor.parameters import Parameters
 from ...encoding_circuit.encoding_circuit_base import EncodingCircuitBase
 from ...util.executor import Executor
 
-from ...util.pennylane.pennylane_gates import qiskit_pennylane_target
-from ...util.pennylane.pennylane_circuit import PennyLaneCircuit
-
-from ...util.data_preprocessing import to_tuple, adjust_features
+from ...util.data_preprocessing import adjust_features
 
 
 class FidelityKernelStatevector:
@@ -66,25 +62,7 @@ class FidelityKernelStatevector:
             else:
                 self._parameter_vector = None
 
-            enc_circ = self._encoding_circuit.get_circuit(x, self._parameter_vector)
-
-            if self._executor.quantum_framework == "pennylane":
-                circuit = transpile(
-                    enc_circ.qiskit_circuit, target=qiskit_pennylane_target, optimization_level=0
-                )
-                self._pennylane_circuit = PennyLaneCircuit(circuit, "state")
-
-            elif self._executor.quantum_framework == "qulacs":
-                # No sQUlearn-side circuit wrapper needed: qc_executor's own
-                # QulacsExecutor transpiles/caches the generic circuit itself
-                # (see Executor.statevector(), used below).
-                self._native_circuit = enc_circ
-
-            else:
-                raise RuntimeError(
-                    "Quantum framework not supported for FidelityKernelStatevector: "
-                    f"{self._executor.quantum_framework}"
-                )
+            self._native_circuit = self._encoding_circuit.get_circuit(x, self._parameter_vector)
 
             self._build_cached_execution()
 
@@ -96,13 +74,6 @@ class FidelityKernelStatevector:
             if self._executor.quantum_framework == "pennylane":
                 # Composed on the EncodingCircuitBase level, not via qc_executor's own
                 # compose()/invert() (both squash or misplace circuit parameters).
-                #
-                # NOTE: EncodingCircuitBase.inverse() itself still delegates to
-                # qc_executor.QuantumCircuit.invert(), which passes its own circuit to
-                # the num_clbits constructor argument and always raises CircuitError.
-                # This branch is unreachable until that's fixed - tracked by the
-                # pending qc_executor IR refactor. Left in this (already-correct) form
-                # so it starts working without further changes once that lands.
                 composed_circuit = self._encoding_circuit.compose(
                     self._encoding_circuit.inverse(),
                     concatenate_features=True,
@@ -114,11 +85,9 @@ class FidelityKernelStatevector:
                 else:
                     self._parameter_vector = None
 
-                enc_circ = composed_circuit.get_circuit(x, self._parameter_vector)
-                circuit = transpile(
-                    enc_circ.qiskit_circuit, target=qiskit_pennylane_target, optimization_level=0
+                self._native_circuit_shots = composed_circuit.get_circuit(
+                    x, self._parameter_vector
                 )
-                self._pennylane_circuit = PennyLaneCircuit(circuit, "probs")
             elif self._executor.quantum_framework == "qulacs":
                 raise NotImplementedError(
                     "Shot based fidelity kernel is not implemented for Qulacs yet."
@@ -141,32 +110,22 @@ class FidelityKernelStatevector:
         if not self._executor.is_statevector:
             return
 
-        if getattr(self, "_native_circuit", None) is not None:
+        if getattr(self, "_native_circuit", None) is None:
+            return
 
-            @lru_cache(maxsize=self._cache_size)
-            def qulacs_circuit_executor(*args):
-                args_numpy = [np.array(arg) for arg in args]
-                if len(args_numpy) == 0:
-                    return self._executor.statevector(self._native_circuit)
-                elif len(args_numpy) == 1:
-                    return self._executor.statevector(self._native_circuit, x=args_numpy[0])
-                elif len(args_numpy) == 2:
-                    return self._executor.statevector(
-                        self._native_circuit, p=args_numpy[0], x=args_numpy[1]
-                    )
-
-            self._cached_execution = qulacs_circuit_executor
-
-        elif getattr(self, "_pennylane_circuit", None) is not None:
-
-            @lru_cache(maxsize=self._cache_size)
-            def pennylane_circuit_executor(*args, **kwargs):
-                args_numpy = [np.array(arg) for arg in args]
-                return self._executor.pennylane_execute(
-                    self._pennylane_circuit, *args_numpy, **kwargs
+        @lru_cache(maxsize=self._cache_size)
+        def native_circuit_executor(*args):
+            args_numpy = [np.array(arg) for arg in args]
+            if len(args_numpy) == 0:
+                return self._executor.statevector(self._native_circuit)
+            elif len(args_numpy) == 1:
+                return self._executor.statevector(self._native_circuit, x=args_numpy[0])
+            elif len(args_numpy) == 2:
+                return self._executor.statevector(
+                    self._native_circuit, p=args_numpy[0], x=args_numpy[1]
                 )
 
-            self._cached_execution = pennylane_circuit_executor
+        self._cached_execution = native_circuit_executor
 
     def __getstate__(self) -> dict:
         """Return a picklable copy of the kernel's state.
@@ -175,7 +134,7 @@ class FidelityKernelStatevector:
         :func:`functools.lru_cache`. Such objects are not picklable by
         reference: pickle/cloudpickle serialize them via the wrapped function's
         ``<locals>`` qualname
-        (``FidelityKernelStatevector.__init__.<locals>.qulacs_circuit_executor``),
+        (``FidelityKernelStatevector._build_cached_execution.<locals>.native_circuit_executor``),
         which cannot be resolved on load -> ``AttributeError: Can't get local
         object ...``. It is a pure memoization cache, so we drop it here and
         rebuild it in :meth:`__setstate__`; every other attribute (including the
@@ -310,13 +269,19 @@ class FidelityKernelStatevector:
                 raise ValueError(
                     "Parameters have to been set with assign_parameters or as initial parameters!"
                 )
-            arguments = [(self._parameters, xy) for xy in xy_list]
+            kwargs = {"p": self._parameters}
         else:
-            arguments = [(xy,) for xy in xy_list]
+            kwargs = {}
 
-        circuits = [self._pennylane_circuit] * len(arguments)
-        all_probs = self._executor.pennylane_execute_batched(circuits, arguments)
-        kernel_entries = [prob[0] for prob in all_probs]  # Get the count of the zero state
+        if len(xy_list) == 0:
+            kernel_entries = []
+        else:
+            # One batched call across the whole xy_list
+            # instead of pennylane_execute_batched's own per-entry tape construction.
+            probs = self._executor.probabilities(self._native_circuit_shots, x=xy_list, **kwargs)
+            if not isinstance(probs, list):
+                probs = [probs]
+            kernel_entries = [pr.get(0, 0.0) for pr in probs]  # |0...0> probability
 
         kernel_matrix = np.ones((x.shape[0], y.shape[0]))
         if is_symmetric:
@@ -359,24 +324,9 @@ class FidelityKernelStatevector:
 
         # Convert the input data to the correct format for the lrucache
         x_inp, _ = adjust_features(x, self._num_features)
-        x_inpT = to_tuple(np.transpose(x_inp), flatten=False)
         y_inp, _ = adjust_features(y, self._num_features)
-        y_inpT = to_tuple(np.transpose(y_inp), flatten=False)
 
-        if self._executor.quantum_framework == "pennylane":
-
-            if self._parameter_vector is not None:
-                if self._parameters is None:
-                    raise ValueError(
-                        "Parameters have to been set with assign_parameters or as initial parameters!"
-                    )
-                x_sv = np.array(self._cached_execution(tuple(self._parameters), x_inpT))
-                y_sv = np.array(self._cached_execution(tuple(self._parameters), y_inpT))
-            else:
-                x_sv = np.array(self._cached_execution(x_inpT))
-                y_sv = np.array(self._cached_execution(y_inpT))
-
-        elif self._executor.quantum_framework == "qulacs":
+        if self._executor.quantum_framework in ("pennylane", "qulacs"):
 
             if self._parameter_vector is not None:
                 if self._parameters is None:

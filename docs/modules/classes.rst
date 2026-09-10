@@ -212,7 +212,6 @@ QNN Core
    :template: class.rst
 
    qnn.lowlevel_qnn.LowLevelQNN
-   qnn.lowlevel_qnn.lowlevel_qnn_pennylane.LowLevelQNNPennyLane
    qnn.lowlevel_qnn.lowlevel_qnn_base.LowLevelQNNBase
    qnn.loss.SquaredLoss
    qnn.loss.MeanSquaredError
@@ -254,18 +253,6 @@ Implemented optimizers
    optimizers.SLSQP
    optimizers.SPSA
    optimizers.SGLBO
-
-PennyLane interface
-------------------------------------
-
-.. currentmodule:: squlearn
-
-.. autosummary::
-   :nosignatures:
-   :toctree: generated/
-   :template: class.rst
-
-   util.pennylane.PennyLaneCircuit
 
 Base Classes
 ------------------------------------

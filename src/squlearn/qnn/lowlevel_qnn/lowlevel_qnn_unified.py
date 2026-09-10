@@ -15,7 +15,6 @@ from ...util import Executor
 from ...util.data_preprocessing import adjust_features, adjust_parameters, to_tuple
 
 from .lowlevel_qnn_base import LowLevelQNNBase
-from .lowlevel_qnn_pennylane import LowLevelQNNPennyLane
 from .evaluation_classes import eval_var, eval_dvardx, eval_dvardp, eval_dvardop, get_eval_laplace
 
 # Frameworks for which Executor.expectation_value/expectation_value_derivatives
@@ -73,19 +72,24 @@ _VAR_FAMILY = {
     "dvarfdop": (("f", "dfccdop", "dfdop"), eval_dvardop),
 }
 
-# Higher-order and mixed derivatives, native only for Qiskit: qc_executor's
-# Qiskit backend supports chained (tuple-form) derivatives -
+# Higher-order and mixed (chained) derivatives - native for Qiskit and PennyLane:
+# qc_executor's Qiskit backend supports chained (tuple-form) derivatives -
 # expectation_value_derivatives(circuit, observable, ("x", "x"), ...) - via
 # OpTree differentiation applied once per side (circuit, observable) and
 # combined once, exact because circuit and observable parameters are
-# disjoint. PennyLane's/Qulacs's qc_executor backends do not have an
-# equivalent yet, so this stays Qiskit-only.
+# disjoint. PennyLane's qc_executor backend supports the same tuple form
+# natively too, via chained qml.jacobian (max_diff=len(todo)) - verified
+# bit-exact against the (now-removed) legacy engine across single- and
+# multi-output configurations, including the one case (dfdopdxdx) where the
+# legacy engine's own autograd hit a NonDifferentiableError the native path
+# doesn't have. Qulacs's qc_executor backend has no equivalent yet, so this
+# stays gated to {"qiskit", "pennylane"} (see _evaluate).
 # Maps each key to (observable_attr, derivative_param_tuple), the same shape
 # as _NATIVE_KEY_INFO above, generalized from a single "x"/"p"/"p_op" string
 # to a tuple of them (one entry per differentiation, in order) - derived
-# directly from LowLevelQNNQiskit's own Expec.from_string argnum mapping
-# (0="p", 1="x", 2="p_op") so every key it recognizes is covered here too.
-_NATIVE_KEY_INFO_QISKIT_ONLY = {
+# directly from the legacy Qiskit engine's own Expec.from_string argnum
+# mapping (0="p", 1="x", 2="p_op") so every key it recognized is covered here.
+_NATIVE_KEY_INFO_CHAINED = {
     "dfdxdx": ("_native_observable", ("x", "x")),
     "dfdpdp": ("_native_observable", ("p", "p")),
     "dfdopdp": ("_native_observable", ("p_op", "p")),
@@ -108,12 +112,12 @@ _NATIVE_KEY_INFO_QISKIT_ONLY = {
     "dfdxdpdx": ("_native_observable", ("x", "p", "x")),
     "dfdpdxdx": ("_native_observable", ("p", "x", "x")),
 }
-_NATIVE_KEYS_QISKIT_ONLY = frozenset(_NATIVE_KEY_INFO_QISKIT_ONLY)
+_NATIVE_KEYS_CHAINED = frozenset(_NATIVE_KEY_INFO_CHAINED)
 
 # Trailing-shape dimensions for the keys above: one attribute name per tuple
 # position, in the same order as the derivative tuple - generalizes
 # _NATIVE_KEY_TRAILING_DIM_ATTR's single-attribute form.
-_NATIVE_KEY_TRAILING_DIM_ATTR_QISKIT_ONLY = {
+_NATIVE_KEY_TRAILING_DIM_ATTR_CHAINED = {
     "dfdxdx": ("num_features", "num_features"),
     "dfdpdp": ("num_parameters", "num_parameters"),
     "dfdopdp": ("num_parameters_observable", "num_parameters"),
@@ -152,26 +156,27 @@ _LAPLACE_FAMILY = {
 # to qiskit, so a single merged dict (instead of two conditionally-consulted
 # ones) keeps _compute_native/_compute_native_per_observable/_trailing_shape
 # simple - no key collides between the two source dicts.
-_NATIVE_KEY_INFO_ALL = {**_NATIVE_KEY_INFO, **_NATIVE_KEY_INFO_QISKIT_ONLY}
+_NATIVE_KEY_INFO_ALL = {**_NATIVE_KEY_INFO, **_NATIVE_KEY_INFO_CHAINED}
 _NATIVE_KEY_TRAILING_DIM_ATTR_ALL = {
     **_NATIVE_KEY_TRAILING_DIM_ATTR,
-    **_NATIVE_KEY_TRAILING_DIM_ATTR_QISKIT_ONLY,
+    **_NATIVE_KEY_TRAILING_DIM_ATTR_CHAINED,
 }
 
 
 class LowLevelQNNUnified(LowLevelQNNBase):
     """Low-level QNN that evaluates ``f``/``dfdx``/``dfdp``/``dfdop``, the corresponding
     values of the squared observable (``fcc``/``dfccdx``/``dfccdp``/``dfccdop``), the
-    ``var``/``dvardx``/``dvardp``/``dvardop`` family derived from those, and - for Qiskit
-    only - every chained higher-order derivative (``dfdxdx``, ``laplace``, ...) plus generic
-    identity-based derivative keys (e.g. ``llqnn.parameters[0]``), directly through
-    ``qc_executor`` (no ``OpTree`` construction of its own). Falls back to the legacy
-    framework-specific engine (:class:`LowLevelQNNPennyLane`) for every non-native key on
-    frameworks qc_executor does not yet fully cover. Qiskit and Qulacs have no such fallback
-    engine left: their legacy engines (``LowLevelQNNQiskit``, ``LowLevelQNNQulacs``) declared
-    every key not covered above as unsupported already, so nothing was lost by
-    removing them; any other key raises ``NotImplementedError`` directly for those two
-    frameworks (see :attr:`_fallback`).
+    ``var``/``dvardx``/``dvardp``/``dvardop`` family derived from those, and - for Qiskit and
+    PennyLane - every chained higher-order derivative (``dfdxdx``, ``laplace``, ...), plus -
+    for Qiskit only - generic identity-based derivative keys (e.g. ``llqnn.parameters[0]``),
+    directly through ``qc_executor`` (no ``OpTree`` construction of its own, no per-framework
+    fallback engine). Qulacs supports only the base native key set (no chained derivatives):
+    its legacy engine (``LowLevelQNNQulacs``) declared every other key unsupported already,
+    so nothing was lost by removing it. Any other key raises ``NotImplementedError`` directly
+    (see :meth:`_unsupported_key_error`) - this is true for all three frameworks now; the
+    legacy per-framework engines (``LowLevelQNNQiskit``, ``LowLevelQNNPennyLane``,
+    ``LowLevelQNNQulacs``) have all been removed, having been proven bit-exact against this
+    native path for every key they supported before their removal.
 
     Args:
         pqc (EncodingCircuitBase): The parameterized quantum circuit.
@@ -203,7 +208,6 @@ class LowLevelQNNUnified(LowLevelQNNBase):
     ) -> None:
         self._num_features = num_features
         self.caching = caching
-        self._fallback_engine = None
         self._framework = executor.quantum_framework
 
         _framework_labels = {"pennylane": "PennyLane", "qulacs": "Qulacs"}
@@ -278,51 +282,24 @@ class LowLevelQNNUnified(LowLevelQNNBase):
 
         self.result_container = {}
 
-    @property
-    def _fallback(self) -> LowLevelQNNPennyLane:
-        """Lazily-constructed legacy, framework-specific engine. Used for every derivative
-        order/kind not covered by the native qc_executor path, for PennyLane only - the only
-        framework that still has one (see the class docstring).
-
-        Raises:
-            NotImplementedError: For qiskit and qulacs, always - there is no fallback engine
-                for either (see the class docstring). Accessing this property for them means
-                either a non-native derivative key was requested, or (less obviously) one of
-                :attr:`parameters`/:attr:`features`/:attr:`parameters_operator` was read on a
-                framework where those don't return the native vectors: those return the
-                fallback engine's own parameter-vector objects (needed for identity-based
-                tuple derivative specs), not the ones qc_executor uses natively.
-        """
-        if self._fallback_engine is None:
-            if self._framework == "pennylane":
-                self._fallback_engine = LowLevelQNNPennyLane(
-                    self._pqc,
-                    self._observable,
-                    self._executor,
-                    self._num_features,
-                    post_processing=None,
-                    caching=self.caching,
-                )
-            elif self._framework in ("qiskit", "qulacs"):
-                raise NotImplementedError(
-                    "No fallback engine exists for "
-                    f"{self._framework}: only the native evaluation keys "
-                    f"{sorted(self._NATIVE_KEYS | set(_VAR_FAMILY))}"
-                    + (
-                        f" plus {sorted(_NATIVE_KEYS_QISKIT_ONLY | set(_LAPLACE_FAMILY))} "
-                        "(chained derivatives, WP-G) and generic identity-based derivative "
-                        "keys (e.g. llqnn.parameters[0])"
-                        if self._framework == "qiskit"
-                        else ""
-                    )
-                    + " are supported. This was already the case before the legacy "
-                    f"LowLevelQNN{self._framework.capitalize()} engine was removed - it "
-                    "declared every other key unsupported (dfdxdx, laplace, dfdpdp, ..., "
-                    "fischer)."
-                )
-            else:
-                raise RuntimeError(f"Unsupported quantum framework: {self._framework}")
-        return self._fallback_engine
+    def _unsupported_key_error(self, keys) -> NotImplementedError:
+        """Build the error raised for a key none of the native paths cover."""
+        supported = sorted(self._NATIVE_KEYS | set(_VAR_FAMILY))
+        if self._framework in ("qiskit", "pennylane"):
+            supported += sorted(_NATIVE_KEYS_CHAINED | set(_LAPLACE_FAMILY))
+        extra = (
+            " plus generic identity-based derivative keys (e.g. llqnn.parameters[0])"
+            if self._framework == "qiskit"
+            else ""
+        )
+        return NotImplementedError(
+            f"Unsupported evaluation key(s) {list(keys)!r} for framework "
+            f"{self._framework!r}: only the native evaluation keys {supported}{extra} "
+            "are supported. There is no fallback engine for any framework any more - "
+            "the legacy per-framework engines declared every other key unsupported "
+            "already (dfdxdx, laplace, dfdpdp, ..., fischer for Qiskit/Qulacs; "
+            "everything but this WP-15 gap for PennyLane)."
+        )
 
     def get_params(self, deep: bool = True) -> dict:
         """Returns the dictionary of the hyper-parameters of the QNN.
@@ -359,8 +336,6 @@ class LowLevelQNNUnified(LowLevelQNNBase):
 
         if "primitive" in params:
             self._primitive = params["primitive"]
-            if self._fallback_engine is not None:
-                self._fallback_engine.set_params(primitive=params["primitive"])
             params.pop("primitive")
 
         dict_pqc = {key: value for key, value in params.items() if key in self._pqc.get_params()}
@@ -426,28 +401,20 @@ class LowLevelQNNUnified(LowLevelQNNBase):
         """Return true if multiple outputs are used."""
         return isinstance(self._observable, list)
 
-    # For qiskit, these return the *native* self._x/self._p/self._p_op vectors: qc_executor's
-    # tuple-form expectation_value_derivatives (WP-G) resolves a raw Parameter/ParameterVector
-    # by object identity, and these are literally the objects self._native_circuit/
-    # self._native_observable were built from - no fallback engine involved (see
-    # _build_derivative_arg/_evaluate below for how such a key, e.g. `llqnn.parameters[0]`, is
-    # then evaluated). Other frameworks have no such native tuple mechanism yet, so they keep
-    # returning the fallback engine's own vectors, which its OpTree differentiation needs to
-    # see (matches parameters by object identity against its own, separately-built circuit).
     @property
     def parameters(self) -> Parameters:
         """Return the parameter vector of the PQC."""
-        return self._p if self._framework == "qiskit" else self._fallback.parameters
+        return self._p
 
     @property
     def features(self) -> Parameters:
         """Return the feature vector of the PQC."""
-        return self._x if self._framework == "qiskit" else self._fallback.features
+        return self._x
 
     @property
     def parameters_operator(self) -> Parameters:
         """Return the parameter vector of the cost operator."""
-        return self._p_op if self._framework == "qiskit" else self._fallback.parameters_operator
+        return self._p_op
 
     def _build_derivative_arg(self, val):
         """Translate a raw derivative key (Parameter/Parameters/tuple of those, e.g.
@@ -907,20 +874,20 @@ class LowLevelQNNUnified(LowLevelQNNBase):
             allowed_native_keys = self._NATIVE_KEYS
             allowed_post_keys = dict(_VAR_FAMILY)
             # The chained-derivative keys (dfdxdx, ...) and the laplace family built on
-            # top of them are only available through qc_executor's Qiskit backend (see
-            # _NATIVE_KEY_INFO_QISKIT_ONLY's docstring) - every other framework falls
-            # through to the legacy engine for them exactly as before.
-            if self._framework == "qiskit":
-                allowed_native_keys = allowed_native_keys | _NATIVE_KEYS_QISKIT_ONLY
+            # top of them are native for Qiskit and PennyLane (see
+            # _NATIVE_KEY_INFO_CHAINED's docstring) - Qulacs's qc_executor backend has no
+            # equivalent yet.
+            if self._framework in ("qiskit", "pennylane"):
+                allowed_native_keys = allowed_native_keys | _NATIVE_KEYS_CHAINED
                 allowed_post_keys.update(_LAPLACE_FAMILY)
             native_keys = [v for v in values if isinstance(v, str) and v in allowed_native_keys]
             var_keys = [v for v in values if isinstance(v, str) and v in allowed_post_keys]
             # Generic identity-based derivative keys (Parameter/Parameters/tuple of those,
             # e.g. `llqnn.parameters[0]`) are native only for Qiskit - qc_executor's tuple
-            # mechanism (WP-G) resolves them by object identity against
+            # mechanism resolves them by object identity against
             # self._native_circuit/self._native_observable (see _build_derivative_arg).
-            # Every other framework keeps routing them to the fallback engine, exactly as
-            # before, via fallback_keys below.
+            # PennyLane/Qulacs have no such identity-based tuple mechanism, so such a key
+            # is unsupported for them, it falls into unsupported_keys below.
             if self._framework == "qiskit":
                 raw_keys = [
                     v
@@ -934,9 +901,11 @@ class LowLevelQNNUnified(LowLevelQNNBase):
             native_keys = []
             var_keys = []
             raw_keys = []
-        fallback_keys = [
+        unsupported_keys = [
             v for v in values if v not in native_keys and v not in var_keys and v not in raw_keys
         ]
+        if unsupported_keys:
+            raise self._unsupported_key_error(unsupported_keys)
 
         # "var" and its gradients need nothing beyond the plain expectation value and its
         # first derivatives (see _VAR_FAMILY); "laplace" and its gradients need nothing
@@ -954,8 +923,6 @@ class LowLevelQNNUnified(LowLevelQNNBase):
         for key in var_keys:
             _, evaluation_function = allowed_post_keys[key]
             result[key] = evaluation_function(result)
-        if fallback_keys:
-            result.update(self._fallback._evaluate(x, param, param_op, *fallback_keys))
 
         result["x"] = x
         result["param"] = param

@@ -77,8 +77,6 @@ from squlearn.util.executor import (
     BaseSamplerV2,
     SessionContextMisuseWarning,
 )
-from squlearn.util.pennylane import PennyLaneCircuit
-
 from qc_executor import QuantumCircuit as QcExecutorQuantumCircuit, QuantumOperator
 
 
@@ -295,19 +293,14 @@ class TestExecutorPennyLane:
         ],
     )
     def test_pennylane_probs(self, executor_str, request, simple_circuit):
-        """Tests the PennyLane execution of a circuit with the probs return type."""
-
-        assert_dict = {
-            "ExecutorPennyLane": np.array([0.0, 0.0, 0.0, 1.0]),
-            "ExecutorPennyLaneShots": np.array([0.0, 0.0, 0.0, 1.0]),
-            "ExecutorPennyLaneDevice": np.array([0.0, 0.0, 0.0, 1.0]),
-        }
+        """Executor.probabilities() through the native qc_executor path - the
+        successor to the removed Executor.pennylane_execute()."""
 
         executor = request.getfixturevalue(executor_str)
-        circuit = PennyLaneCircuit(simple_circuit, "probs")
+        circuit = QcExecutorQuantumCircuit.from_qiskit(simple_circuit)
 
-        res = executor.pennylane_execute(circuit)
-        assert np.allclose(assert_dict[executor_str], res)
+        res = executor.probabilities(circuit)
+        assert res == {3: 1.0}
 
     @pytest.mark.parametrize(
         "executor_str",
@@ -318,19 +311,14 @@ class TestExecutorPennyLane:
         ],
     )
     def test_pennylane_observable(self, executor_str, request, simple_circuit, observable):
-        """Tests the PennyLane execution of a circuit with an observable return type."""
-
-        assert_dict = {
-            "ExecutorPennyLane": 1.0,
-            "ExecutorPennyLaneShots": 1.0,
-            "ExecutorPennyLaneDevice": 1.0,
-        }
+        """Executor.expectation_value() through the native qc_executor path."""
 
         executor = request.getfixturevalue(executor_str)
-        circuit = PennyLaneCircuit(simple_circuit, observable)
+        circuit = QcExecutorQuantumCircuit.from_qiskit(simple_circuit)
+        op = QuantumOperator(_native_operator=observable)
 
-        res = executor.pennylane_execute(circuit)
-        assert np.allclose(assert_dict[executor_str], res)
+        res = executor.expectation_value(circuit, op)
+        assert np.isclose(res, 1.0)
 
     @pytest.mark.parametrize(
         "executor_str",
@@ -341,21 +329,17 @@ class TestExecutorPennyLane:
         ],
     )
     def test_pennylane_probs_batched(self, executor_str, request, parameterized_circuit):
-        """Tests the batched PennyLane execution of a circuit with the probs return type."""
-
-        assert_dict = {
-            "ExecutorPennyLane": np.array([0.0, 0.0, 0.0, 1.0]),
-            "ExecutorPennyLaneShots": np.array([0.0, 0.0, 0.0, 1.0]),
-            "ExecutorPennyLaneDevice": np.array([0.0, 0.0, 0.0, 1.0]),
-        }
+        """Executor.probabilities() batched over a parameter-set axis (WP-11) - the
+        successor to the removed Executor.pennylane_execute_batched()."""
 
         executor = request.getfixturevalue(executor_str)
-        circuit = [PennyLaneCircuit(parameterized_circuit, "probs")] * 4
+        circuit = QcExecutorQuantumCircuit.from_qiskit(parameterized_circuit)
 
-        res = executor.pennylane_execute_batched(
-            circuit, [([np.pi, np.pi],), ([np.pi, np.pi],), ([np.pi, np.pi],), ([np.pi, np.pi],)]
-        )
-        assert np.allclose(assert_dict[executor_str], res)
+        # cutoff filters the floating-point residuals RY(pi) leaves on the other basis
+        # states (~1e-33), unlike the exact-X-gate case test_pennylane_probs compares
+        # against directly.
+        res = executor.probabilities(circuit, x=[[np.pi, np.pi]] * 4, cutoff=1e-6)
+        assert res == [{3: 1.0}] * 4
 
     @pytest.mark.parametrize(
         "executor_str",
@@ -368,21 +352,14 @@ class TestExecutorPennyLane:
     def test_pennylane_observable_batched(
         self, executor_str, request, parameterized_circuit, observable
     ):
-        """Tests the batched PennyLane execution of a circuit with an observable return type."""
-
-        assert_dict = {
-            "ExecutorPennyLane": 1.0,
-            "ExecutorPennyLaneShots": 1.0,
-            "ExecutorPennyLaneDevice": 1.0,
-        }
+        """Executor.expectation_value() batched over a parameter-set axis (WP-11)."""
 
         executor = request.getfixturevalue(executor_str)
-        circuit = [PennyLaneCircuit(parameterized_circuit, observable)] * 4
+        circuit = QcExecutorQuantumCircuit.from_qiskit(parameterized_circuit)
+        op = QuantumOperator(_native_operator=observable)
 
-        res = executor.pennylane_execute_batched(
-            circuit, [([np.pi, np.pi],), ([np.pi, np.pi],), ([np.pi, np.pi],), ([np.pi, np.pi],)]
-        )
-        assert np.allclose(assert_dict[executor_str], res)
+        res = executor.expectation_value(circuit, op, x=[[np.pi, np.pi]] * 4)
+        assert np.allclose(res, [1.0] * 4)
 
 
 class TestExecutorQulacs:

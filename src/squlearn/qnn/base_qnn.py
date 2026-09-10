@@ -309,12 +309,10 @@ class BaseQNN(BaseEstimator, SerializableModelMixin, ABC):
     def _maybe_disable_opt_param_op(self) -> None:
         """Force ``opt_param_op`` off when the observable has no trainable params.
 
-        Optimizing zero parameters is a no-op. Worse, for multi-output QNNs
-        (operator passed as a list), letting the training loop request
-        ``dfdop`` returns an empty (1, 0) sentinel from
-        ``LowLevelQNNPennyLane._evaluate_todo_all_x`` that downstream
-        ``_evaluate`` cannot reshape, crashing with
-        ``ValueError: cannot reshape array of size 0 into shape (k, 1)``.
+        Optimizing zero parameters is a no-op, letting the training loop request ``dfdop`` for a
+        zero-parameter observable could crash downstream reshaping with a shape mismatch.
+        ``LowLevelQNNUnified`` itself already handles a zero-sized "p_op" trailing axis
+        gracefully, but this guard is kept as a cheap, framework-independent safety net.
 
         Only the ``True -> False`` direction is auto-applied; if the user
         explicitly disabled observable-parameter optimization, that choice is

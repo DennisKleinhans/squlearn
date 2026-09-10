@@ -1,5 +1,6 @@
 import numpy as np
 from qc_executor import Parameters
+from qc_executor.pennylane.pennylane_circuit import PennyLaneCircuit
 from qiskit_algorithms.gradients import LinCombQGT, QFI
 
 import pennylane as qml
@@ -8,7 +9,6 @@ import pennylane.numpy as pnp
 from ..encoding_circuit.encoding_circuit_base import EncodingCircuitBase
 from .executor import Executor, BaseEstimatorV2
 from .data_preprocessing import adjust_features, adjust_parameters, extract_num_features
-from .pennylane import PennyLaneCircuit
 
 
 def get_quantum_fisher(
@@ -181,7 +181,7 @@ def _get_quantum_fisher_pennylane(
     num_features = extract_num_features(x)
     parameter_vector = Parameters("p", encoding_circuit.num_parameters)
     feature_vector = Parameters("x", num_features)
-    circuit = encoding_circuit.get_circuit(feature_vector, parameter_vector).qiskit_circuit
+    circuit = encoding_circuit.get_circuit(feature_vector, parameter_vector)
 
     # Adjust input
     x_adjusted, multi_x = adjust_features(x, num_features)
@@ -189,7 +189,7 @@ def _get_quantum_fisher_pennylane(
 
     fisher_list = []
     if mode == "p":
-        pennylane_circuit = PennyLaneCircuit(circuit, "probs")
+        pennylane_circuit = PennyLaneCircuit(circuit, measurement="probs")
         pennylane_circuit = qml.QNode(pennylane_circuit.pennylane_circuit, executor.backend)
         fisher_func = qml.metric_tensor(pennylane_circuit)
         for x_values in x_adjusted:
@@ -200,7 +200,7 @@ def _get_quantum_fisher_pennylane(
                 fisher_list.append(4.0 * np.array(fisher_func(p_values, x_values)))
 
     elif mode == "x":
-        pennylane_circuit = PennyLaneCircuit(circuit, "probs")
+        pennylane_circuit = PennyLaneCircuit(circuit, measurement="probs")
         pennylane_circuit = qml.QNode(pennylane_circuit.pennylane_circuit, executor.backend)
         fisher_func = qml.metric_tensor(pennylane_circuit)
         for x_values in x_adjusted:
@@ -213,8 +213,8 @@ def _get_quantum_fisher_pennylane(
     elif mode == "px":
         px_ = Parameters("px", encoding_circuit.num_parameters + encoding_circuit.num_features)
         dictionary = dict(zip(list(parameter_vector) + list(feature_vector), list(px_)))
-        circuit.assign_parameters(dictionary, inplace=True)
-        pennylane_circuit = PennyLaneCircuit(circuit, "probs")
+        circuit.assign_parameters(dictionary)
+        pennylane_circuit = PennyLaneCircuit(circuit, measurement="probs")
         pennylane_circuit = qml.QNode(pennylane_circuit.pennylane_circuit, executor.backend)
         fisher_func = qml.metric_tensor(pennylane_circuit)
         for x_values in x_adjusted:

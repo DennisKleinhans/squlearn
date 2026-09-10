@@ -155,7 +155,6 @@ else:
 from .execution import AutomaticBackendSelection, ParallelEstimator, ParallelSampler
 from .execution.parallel_estimator import ParallelEstimatorV1, ParallelEstimatorV2
 from .execution.parallel_sampler import ParallelSamplerV1, ParallelSamplerV2
-from .pennylane import PennyLaneCircuit
 
 
 class SessionContextMisuseWarning(UserWarning):
@@ -669,7 +668,15 @@ class Executor:
                 )
             if self.qpu_parallelization:
                 raise ValueError("QPU parallelization is not supported for PennyLane devices!")
+            # self._pennylane_device is always an already-constructed Device by this point,
+            # and PennyLaneExecutor rejects shots=/seed= together with a Device instance (it
+            # insists those be configured on the device itself beforehand) - so shots is
+            # applied via the setter right after construction instead of passed here. This
+            # was previously skipped entirely (unlike the qulacs branch below, which already
+            # passes shots= at construction) - Executor("pennylane", shots=N) silently never
+            # configured qc_executor's own shots at all, found while working on WP-15.
             self._qc_executor = QcExecutorFactory.create(self._pennylane_device)
+            self._qc_executor.shots = shots
         elif self.quantum_framework == "qulacs":
             self._qc_executor = QcExecutorFactory.create(
                 "qulacs", shots=shots, seed=self._set_seed_for_primitive
@@ -801,199 +808,6 @@ class Executor:
     def quantum_framework(self) -> str:
         """Return the quantum framework that is used in the executor."""
         return self._quantum_framework
-
-    def pennylane_execute(self, pennylane_circuit: callable, *args, **kwargs):
-        """
-        Function for executing of PennyLane circuits with the Executor with caching and restarts
-
-        Args:
-            pennylane_circuit (callable): The PennyLane circuit function
-            args: Arguments for the circuit
-            kwargs: Keyword arguments for the circuit
-
-        Returns:
-            The result of the circuit
-        """
-        # Get hash value of the circuit
-        if hasattr(pennylane_circuit, "hash"):
-            hash_value = [pennylane_circuit.hash, args]
-        else:
-            hash_value = [hash(pennylane_circuit), args]
-
-        # Helper function for execution
-        if isinstance(pennylane_circuit, PennyLaneCircuit):
-            pennylane_circuit = pennylane_circuit.pennylane_circuit
-            pennylane_circuit = qml.QNode(pennylane_circuit, self.backend, diff_method="best")
-        if isinstance(pennylane_circuit, qml.QNode) and version.parse(
-            pennylane_version
-        ) >= version.parse("0.42.0"):
-            pennylane_circuit = qml.set_shots(pennylane_circuit, shots=self.shots)
-
-        def execute_circuit():
-            return pennylane_circuit(*args, **kwargs)
-
-        # Call function for cached execution
-        return self._pennylane_execute_cached(execute_circuit, hash_value)
-
-    def pennylane_execute_batched(
-        self, pennylane_circuit: callable, arg_tuples: Union[list, tuple], **kwargs
-    ) -> Union[np.array, list]:
-        """
-        Function for batched execution of PennyLane circuits.
-
-        Args:
-            pennylane_circuit (callable): The PennyLane circuit function
-            arg_tuples (Union[list,tuple]): List of tuples with arguments for the circuit
-
-        Returns
-            Union[np.array,list]: List of results of the circuits
-        """
-        input_list = True
-        if not isinstance(pennylane_circuit, list):
-            pennylane_circuit = [pennylane_circuit]
-            input_list = False
-
-        if not isinstance(arg_tuples, list):
-            arg_tuples = [arg_tuples]
-            input_list = False
-
-        if len(pennylane_circuit) != len(arg_tuples):
-            raise ValueError("Length of pennylane_circuit and arg_tuples does not match")
-
-        # Build tapes for batched execution and get the hash value of the circuits
-        hash_value = ""
-        batched_tapes = []
-        for i, arg_tuple in enumerate(arg_tuples):
-            circuit = pennylane_circuit[i]
-            if isinstance(circuit, PennyLaneCircuit):
-                circuit = circuit.pennylane_circuit
-
-            circuit = qml.QNode(circuit, self.backend, diff_method="best")
-            if version.parse(pennylane_version) >= version.parse("0.42.0"):
-                circuit = qml.set_shots(circuit, shots=self.shots)
-            circuit.construct(arg_tuple, kwargs)
-
-            if hasattr(circuit, "hash"):
-                hash_value += str(circuit.hash)
-            else:
-                hash_value += str(hash(circuit))
-
-            batched_tapes.append(circuit._tape)
-
-        hash_value = [hash_value, arg_tuples]
-
-        # Helper function for execution
-        def execute_tapes():
-            return qml.execute(batched_tapes, self.backend)
-
-        # Call function for cached execution
-        if input_list:
-            return self._pennylane_execute_cached(execute_tapes, hash_value)
-        else:
-            return self._pennylane_execute_cached(execute_tapes, hash_value)[0]
-
-    def _pennylane_execute_cached(self, function: callable, hash_value: Union[str, int]):
-        """
-        Function for cached execution of PennyLane circuits with the Executor
-
-        Args:
-            function (callable): The function that is executed
-            hash_value (Union[str,int]): Hash value for the caching
-
-        Returns:
-            The result of the circuit
-        """
-        success = False
-        critical_error = False
-        critical_error_message = None
-        for repeat in range(self._max_jobs_retries):
-
-            try:
-                result = None
-                cached = False
-                if self._caching:
-
-                    # Generate hash value for caching
-                    hash_value_adjusted = self._cache.hash_variable(
-                        [
-                            "pennylane_execute",
-                            hash_value,
-                            self._pennylane_device.name,
-                            self.shots,
-                        ]
-                    )
-
-                    result = self._cache.get_file(hash_value_adjusted)
-                    cached = True
-                else:
-                    hash_value_adjusted = None
-
-                if result is None:
-                    cached = False
-                    if self._caching:
-                        self._logger.info(
-                            f"Execution of pennylane circuit function with hash value: {{}}".format(
-                                hash_value_adjusted
-                            )
-                        )
-                    else:
-                        self._logger.info(f"Execution of pennylane circuit function")
-                    # Execution of pennylane circuit function
-                    result = function()
-                    self._logger.info(f"Execution of pennylane circuit successful")
-                elif self._caching:
-                    self._logger.info(
-                        f"Cached result found with hash value: {{}}".format(hash_value_adjusted)
-                    )
-
-                success = True
-
-            except (
-                NotImplementedError,
-                RuntimeError,
-                ValueError,
-                NotImplementedError,
-                TypeError,
-                qml.numpy.NonDifferentiableError,
-            ) as e:
-                critical_error = True
-                critical_error_message = e
-
-            except Exception as e:
-                if repeat == self._max_jobs_retries - 1:
-                    critical_error = True
-                    critical_error_message = e
-                else:
-                    self._logger.info(
-                        f"Executor failed to run pennylane_execute because of unknown error!"
-                    )
-                    self._logger.info("Error message: {}".format(str(e)))
-                    self._logger.info("Traceback: {}".format(str(traceback.format_exc())))
-                    print("Executor failed to run pennylane_execute because of unknown error!")
-                    print("Error message: {}".format(str(e)))
-                    print("Traceback: {}".format(str(traceback.format_exc())))
-                    print("Execution will be restarted")
-                    success = False
-
-            if success:
-                break
-            elif not critical_error:
-                self._logger.info(f"Restarting PennyLane execution")
-                success = False
-
-            if critical_error:
-                self._logger.info(f"Critical error detected; abort execution")
-                raise critical_error_message
-
-        if success is not True:
-            raise RuntimeError(
-                f"Could not run job successfully after {{}} retries".format(self._max_jobs_retries)
-            )
-
-        if self._caching and not cached:
-            self._cache.store_file(hash_value_adjusted, copy.copy(result))
-
-        return result
 
     @property
     def execution(self) -> str:
@@ -1700,23 +1514,8 @@ class Executor:
 
         elif self.quantum_framework == "pennylane":
 
-            if (
-                version.parse(pennylane_version) < version.parse("0.42.0")
-                and self._pennylane_device is not None
-            ):
-                if isinstance(self._pennylane_device.shots, qml.measurements.Shots):
-                    if num_shots == 0:
-                        self._pennylane_device._shots = qml.measurements.Shots(None)
-                    else:
-                        self._pennylane_device._shots = qml.measurements.Shots(num_shots)
-                elif (
-                    isinstance(self._pennylane_device.shots, int)
-                    or self._pennylane_device.shots is None
-                ):
-                    if num_shots == 0:
-                        self._pennylane_device._shots = None
-                    else:
-                        self._pennylane_device._shots = num_shots
+            if self._qc_executor is not None:
+                self._qc_executor.shots = self._shots
 
         elif self.quantum_framework == "qiskit":
 
@@ -1758,17 +1557,7 @@ class Executor:
 
         elif self.quantum_framework == "pennylane":
 
-            if (
-                version.parse(pennylane_version) < version.parse("0.42.0")
-                and self._pennylane_device is not None
-            ):
-                if isinstance(self._pennylane_device.shots, qml.measurements.Shots):
-                    shots = self._pennylane_device.shots.total_shots
-                elif (
-                    isinstance(self._pennylane_device.shots, int)
-                    or self._pennylane_device.shots is None
-                ):
-                    shots = self._pennylane_device.shots
+            shots = self._qc_executor.shots if self._qc_executor is not None else None
 
         elif self.quantum_framework == "qiskit":
 
