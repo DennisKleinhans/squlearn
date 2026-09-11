@@ -555,7 +555,7 @@ class Executor:
                 )
             elif execution in ["pennylane", "default.qubit"]:
                 self._quantum_framework = "pennylane"
-                self._pennylane_device = qml.device("default.qubit")
+                self._pennylane_device = qml.device("default.qubit", seed=self._pennylane_seed)
                 if shots is None:
                     shots = self._pennylane_device.shots.total_shots
             elif execution in ["qulacs"]:
