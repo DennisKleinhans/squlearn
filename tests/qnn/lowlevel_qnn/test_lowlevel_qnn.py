@@ -36,7 +36,7 @@ def test_backends_consistency():
     """Tests that the plain native keys (f/dfdp/dfdx/var) agree across frameworks.
 
     Raw identity-based derivative keys (e.g. `llqnn.parameters[0]`) are intentionally
-    not exercised here: they stay Qiskit-only (see LowLevelQNNUnified._build_derivative_arg)
+    not exercised here: they stay Qiskit-only (see LowLevelQNN._build_derivative_arg)
     - qc_executor's tuple mechanism resolves them by object identity, and PennyLane's/
     Qulacs's qc_executor backends have no equivalent yet. Since the legacy per-framework
     fallback engines were removed (all three frameworks are fully native now, see
@@ -55,7 +55,7 @@ def test_backends_consistency():
 
 def test_raw_derivative_key_p_op_ownership_qiskit_only():
     """Regression for the raw-key multi-output p_op-ownership logic
-    (LowLevelQNNUnified._p_op_entry_excludes_observable): a second derivative built from two
+    (LowLevelQNN._p_op_entry_excludes_observable): a second derivative built from two
     individual llqnn.parameters_operator[i] elements belonging to *different* observables
     must be evaluated without error (qc_executor itself raises if a raw parameter belonging
     to a different observable's operator is passed through unfiltered - this is what the
@@ -136,7 +136,7 @@ _VAR_FAMILY_KEYS = ("var", "varf", "dvardx", "dvardp", "dvardop")
 @pytest.mark.parametrize("framework", ["pennylane", "qulacs"])
 def test_var_family_is_native_and_matches_across_frameworks(framework, observable):
     """The var/dvardx/dvardp/dvardop family is evaluated via qc_executor's native
-    <O^2> path (LowLevelQNNUnified._native_observable_squared) for every framework - no
+    <O^2> path (LowLevelQNN._native_observable_squared) for every framework - no
     fallback engine exists any more (all three legacy per-framework engines have been
     removed, having been proven bit-exact against this native path for every key they
     supported before removal). Verified here by cross-framework agreement against a Qiskit
@@ -164,7 +164,7 @@ def test_var_family_is_native_and_matches_across_frameworks(framework, observabl
 
 
 # Higher-order and mixed (chained) derivatives, native for Qiskit and PennyLane (see
-# LowLevelQNNUnified._NATIVE_KEY_INFO_CHAINED). Every key below is cross-checked against
+# LowLevelQNN._NATIVE_KEY_INFO_CHAINED). Every key below is cross-checked against
 # PennyLane's own, independently-computed (chained qml.jacobian) native engine, except
 # "dfdopdxdx": PennyLane's own engine fails on that one specific key with a pre-existing,
 # unrelated NonDifferentiableError (autograd trips over a near-zero complex intermediate)

@@ -212,7 +212,6 @@ QNN Core
    :template: class.rst
 
    qnn.lowlevel_qnn.LowLevelQNN
-   qnn.lowlevel_qnn.lowlevel_qnn_base.LowLevelQNNBase
    qnn.loss.SquaredLoss
    qnn.loss.MeanSquaredError
    qnn.loss.CrossEntropyLoss

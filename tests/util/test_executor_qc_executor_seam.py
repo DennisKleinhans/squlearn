@@ -59,7 +59,7 @@ def test_qc_executor_rebuilds_after_set_backend():
 def test_native_qnn_evaluation_matches_direct_statevector_path():
     """Expectation values and their first-order derivatives evaluated through
     Executor.expectation_value/expectation_value_derivatives (the native
-    evaluation path used by LowLevelQNNUnified) must match qc_executor's
+    evaluation path used by LowLevelQNN) must match qc_executor's
     direct statevector path bit-for-bit."""
     pqc = ParamZFeatureMap(3, 2)
     obs = SummedPaulis(3)

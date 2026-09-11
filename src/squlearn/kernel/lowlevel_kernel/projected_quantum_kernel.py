@@ -20,7 +20,6 @@ from ...util.data_preprocessing import extract_num_features, to_tuple
 
 
 from ...qnn.lowlevel_qnn import LowLevelQNN
-from ...qnn.lowlevel_qnn.lowlevel_qnn_base import LowLevelQNNBase
 
 from ...observables import SinglePauli
 from ...observables.observable_base import ObservableBase
@@ -37,7 +36,7 @@ class OuterKernelBase:
 
     @abstractmethod
     def __call__(
-        self, qnn: LowLevelQNNBase, parameters: np.ndarray, x: np.ndarray, y: np.ndarray = None
+        self, qnn: LowLevelQNN, parameters: np.ndarray, x: np.ndarray, y: np.ndarray = None
     ) -> np.ndarray:
         """
         Args:
@@ -77,7 +76,7 @@ class OuterKernelBase:
 
     def dKdx(
         self,
-        qnn: LowLevelQNNBase,
+        qnn: LowLevelQNN,
         parameters: np.ndarray,
         x: np.ndarray,
         y: np.ndarray = None,
@@ -99,7 +98,7 @@ class OuterKernelBase:
         raise NotImplementedError("Kernel derivatives are not implement for the outer kernel")
 
     def dKdxdx(
-        self, qnn: LowLevelQNNBase, parameters: np.ndarray, x: np.ndarray, y: np.ndarray = None
+        self, qnn: LowLevelQNN, parameters: np.ndarray, x: np.ndarray, y: np.ndarray = None
     ) -> np.ndarray:
         """
         Implements the analytical derivative of the outer kernel with respect to x and x.
@@ -116,7 +115,7 @@ class OuterKernelBase:
         raise NotImplementedError("Kernel derivatives are not implement for the outer kernel")
 
     def dKdxdy(
-        self, qnn: LowLevelQNNBase, parameters: np.ndarray, x: np.ndarray, y: np.ndarray = None
+        self, qnn: LowLevelQNN, parameters: np.ndarray, x: np.ndarray, y: np.ndarray = None
     ) -> np.ndarray:
         """
         Implements the analytical derivative of the outer kernel with respect to x and y.
@@ -181,7 +180,7 @@ class OuterKernelBase:
 
             def __call__(
                 self,
-                qnn: LowLevelQNNBase,
+                qnn: LowLevelQNN,
                 parameters: np.ndarray,
                 x: np.ndarray,
                 y: np.ndarray = None,
@@ -940,7 +939,7 @@ class GaussianOuterKernel(OuterKernelBase):
         self._name_hyper_parameters = ["gamma"]
 
     def __call__(
-        self, qnn: LowLevelQNNBase, parameters: np.ndarray, x: np.ndarray, y: np.ndarray = None
+        self, qnn: LowLevelQNN, parameters: np.ndarray, x: np.ndarray, y: np.ndarray = None
     ) -> np.ndarray:
         """Evaluates the QNN and returns the Gaussian projected kernel
 
@@ -971,7 +970,7 @@ class GaussianOuterKernel(OuterKernelBase):
 
     def dKdx(
         self,
-        qnn: LowLevelQNNBase,
+        qnn: LowLevelQNN,
         parameters: np.ndarray,
         x: np.ndarray,
         y: np.ndarray = None,
@@ -1018,7 +1017,7 @@ class GaussianOuterKernel(OuterKernelBase):
         )
 
     def dKdxdx(
-        self, qnn: LowLevelQNNBase, parameters: np.ndarray, x: np.ndarray, y: np.ndarray = None
+        self, qnn: LowLevelQNN, parameters: np.ndarray, x: np.ndarray, y: np.ndarray = None
     ) -> np.ndarray:
         """
         Implements the analytical derivative of the Gaussian kernel with respect to x and x.
@@ -1050,7 +1049,7 @@ class GaussianOuterKernel(OuterKernelBase):
         )  # RBF kernel [i, j])
 
     def dKdxdy(
-        self, qnn: LowLevelQNNBase, parameters: np.ndarray, x: np.ndarray, y: np.ndarray = None
+        self, qnn: LowLevelQNN, parameters: np.ndarray, x: np.ndarray, y: np.ndarray = None
     ) -> np.ndarray:
         """
         Implements the analytical derivative of the Gaussian kernel with respect to x and y.

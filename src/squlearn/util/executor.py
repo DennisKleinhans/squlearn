@@ -1462,7 +1462,7 @@ class Executor:
     def expectation_value(self, circuit, observable, **parameters):
         """Evaluate the expectation value of *observable* on *circuit*
         directly through the underlying ``qc_executor`` instance - the
-        native execution path used by ``LowLevelQNNUnified``. Supported for
+        native execution path used by ``LowLevelQNN``. Supported for
         ``quantum_framework in ("qiskit", "pennylane", "qulacs")``.
         """
         return self._qc_executor.expectation_value(circuit, observable, **parameters)

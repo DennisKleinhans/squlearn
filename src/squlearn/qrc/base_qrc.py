@@ -21,7 +21,6 @@ from ..observables.observable_base import ObservableBase
 from ..observables import CustomObservable, SinglePauli
 from ..encoding_circuit.encoding_circuit_base import EncodingCircuitBase
 from ..util import Executor
-from ..qnn.lowlevel_qnn.lowlevel_qnn_base import LowLevelQNNBase
 from ..qnn.lowlevel_qnn import LowLevelQNN
 from ..util.serialization import SerializableModelMixin
 
@@ -112,7 +111,7 @@ class BaseQRC(BaseEstimator, SerializableModelMixin, ABC):
         return self._operators
 
     @property
-    def qnn(self) -> LowLevelQNNBase:
+    def qnn(self) -> LowLevelQNN:
         """Returns the underlying low-level QNN object."""
         return self._qnn
 
